@@ -22,14 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 소스 받기
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Pages 설정
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: 정적 파일 묶기
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
       - name: Pages 배포
         id: deployment
-        uses: actions/deploy-pages@v4
-
+        uses: actions/deploy-pages@v5
