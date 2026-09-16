@@ -175,11 +175,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .map-panel { display: flex; min-width: 0; flex-direction: column; background: #dce5ea; }
 .map-viewport { position: relative; min-height: clamp(420px, calc(100vh - 266px), 820px); flex: 1; overflow: hidden; touch-action: none; cursor: grab; }
 .map-viewport.is-panning { cursor: grabbing; }
-.seat-map { position: absolute; width: 1600px; height: 1000px; transform-origin: 0 0; will-change: transform; }
+.seat-map { position: absolute; width: 1800px; height: 1320px; transform-origin: 0 0; will-change: transform; }
 .seat-map svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
-.stage-shell { fill: #fff; stroke: #c9d7df; stroke-width: 2; filter: url(#stage-shadow); }
-.stage-accent { fill: #0d2a43; }
+.stage-floor { fill: #f0f4f6; stroke: #9aaebc; stroke-width: 2; }
+.stage-front { fill: none; stroke: #577789; stroke-width: 4; }
+.screen-panel { fill: #0d2a43; }
+.screen-label { fill: white; font-size: 17px; font-weight: 750; text-anchor: middle; }
 .stage-title { fill: var(--ink); font-size: 22px; font-weight: 900; letter-spacing: .1em; text-anchor: middle; }
 .stage-subtitle { fill: #728392; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-anchor: middle; }
 .zone-label { fill: #21435a; font-size: 17px; font-weight: 850; letter-spacing: -.02em; text-anchor: middle; }
@@ -189,7 +191,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .aisle-label { fill: #87a0af; font-size: 10px; font-weight: 800; letter-spacing: .22em; text-anchor: middle; }
 .orientation-note { fill: #69808f; font-size: 11px; font-weight: 700; text-anchor: middle; }
 .stage-link { cursor: pointer; outline: none; }
-.stage-link:hover .stage-shell, .stage-link:focus-visible .stage-shell { stroke: var(--cyan); stroke-width: 4; }
+.stage-link:hover .screen-panel, .stage-link:focus-visible .screen-panel { fill: var(--blue); stroke: var(--cyan); stroke-width: 3; }
 .entrance-wall, .entrance-leaf { fill: none; stroke: #0d5c8f; stroke-linecap: round; stroke-width: 3; }
 .entrance-label { fill: #0d5c8f; font-size: 11px; font-weight: 850; text-anchor: middle; }
 
@@ -309,6 +311,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .toast { position: fixed; z-index: 200; left: 50%; bottom: 28px; max-width: calc(100vw - 32px); transform: translateX(-50%); border-radius: 9px; background: #0d2a43; color: white; box-shadow: var(--shadow); padding: 11px 16px; font-size: .85rem; font-weight: 700; }
 .print-header { display: none; }
 
+@media screen and (min-width: 821px) {
+  body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  .app-header, .command-bar, .summary-strip { flex-shrink: 0; }
+  .workspace { flex: 1; min-height: 0; }
+  .map-viewport { min-height: 0; }
+  .workspace:has(.editor-panel.is-open) { padding-right: min(390px, 100vw); }
+}
+
 @media (max-width: 1180px) {
   .command-bar { flex-wrap: wrap; }
   .file-actions { margin-left: 0; }
@@ -380,8 +390,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
   .print-meta span { color: #637684; font-size: 8pt; }
   .workspace, .map-panel { display: block; min-height: 0; background: white; }
   .map-viewport { width: 100%; height: 250mm; min-height: 0; overflow: visible; cursor: default; }
-  .seat-map { position: static; width: 100%; height: auto; transform: none !important; }
-  .seat-map svg { width: 100%; height: auto; max-height: 250mm; }
+  .seat-map { position: static; width: 100% !important; height: 250mm !important; transform: none !important; }
+  .seat-map svg { width: 100%; height: 100%; max-height: 250mm; }
   .seat rect { stroke-width: 1.4; }
   .seat text { font-size: 8px; }
 }
