@@ -18,5 +18,9 @@ jobs:
         run: |
           node --check dist/seat-data.js
           node --check dist/app.js
+          node --check dist/roster-engine.js
+          node --check dist/roster-ui.js
       - name: 406석 데이터 검사
         run: node scripts/validate.cjs
+      - name: 명단과 자동 배치 검사
+        run: node tests/roster-engine.test.cjs

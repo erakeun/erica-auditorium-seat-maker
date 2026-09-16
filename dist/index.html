@@ -48,6 +48,12 @@
         <div id="search-results" class="search-results" hidden></div>
       </div>
 
+      <div class="toolbar-group roster-actions" aria-label="명단과 자동 배치">
+        <button id="open-roster-import" class="text-button" type="button">명단 불러오기</button>
+        <button id="open-auto-layout" class="text-button" type="button">자동 배치</button>
+        <button id="open-roster-list" class="text-button" type="button">명단 보기</button>
+      </div>
+
       <div class="toolbar-group" aria-label="표시 설정">
         <button id="show-seat-id" class="segmented is-active" type="button" aria-pressed="true">좌석번호</button>
         <button id="show-assignee" class="segmented" type="button" aria-pressed="false">배정자 이름</button>
@@ -159,6 +165,8 @@
             <div id="color-options" class="color-options" role="radiogroup" aria-label="표시 색상"></div>
           </div>
 
+          <label class="lock-field"><input id="seat-fixed" type="checkbox" /><span>좌석 고정</span></label>
+
           <div class="panel-actions">
             <button id="save-seat" class="primary-button" type="submit">좌석 정보 저장</button>
             <button id="clear-seat" class="text-button" type="button">배정 해제</button>
@@ -170,9 +178,70 @@
       <button id="panel-scrim" class="panel-scrim" type="button" aria-label="편집 패널 닫기" tabindex="-1"></button>
     </main>
 
+    <dialog id="roster-dialog" class="roster-dialog">
+      <div class="dialog-shell">
+        <header class="dialog-header">
+          <div><p class="panel-kicker">명단과 자동 배치</p><h2 id="roster-dialog-title">명단 불러오기</h2></div>
+          <button id="close-roster-dialog" class="close-button" type="button" aria-label="닫기">×</button>
+        </header>
+        <nav class="dialog-tabs" aria-label="명단 작업">
+          <button type="button" data-roster-tab="import" class="is-active">명단 불러오기</button>
+          <button type="button" data-roster-tab="auto">자동 배치</button>
+          <button type="button" data-roster-tab="list">명단 보기</button>
+        </nav>
+
+        <section class="dialog-page is-active" data-roster-page="import">
+          <div class="flow-grid">
+            <div class="flow-card">
+              <h3>1. 명단 종류와 양식</h3>
+              <div class="inline-options"><label><input type="radio" name="roster-mode" value="event" checked /> 행사용</label><label><input type="radio" name="roster-mode" value="class" /> 수업용</label></div>
+              <div class="button-row"><button id="download-event-template" class="text-button" type="button">행사용 .xlsx 양식</button><button id="download-class-template" class="text-button" type="button">수업용 .xlsx 양식</button></div>
+            </div>
+            <div class="flow-card">
+              <h3>2. 파일 또는 붙여넣기</h3>
+              <label class="file-drop"><span>.xlsx 또는 .csv 선택</span><input id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></label>
+              <label id="sheet-picker-wrap" class="form-field compact" hidden><span>시트 선택</span><select id="sheet-picker"></select></label>
+              <label class="form-field"><span>엑셀 표 또는 이름을 한 줄에 한 명씩 붙여넣기</span><textarea id="roster-paste" rows="6" placeholder="이름&#9;소속&#9;직함&#10;김예시&#9;ERICA&#9;팀장"></textarea></label>
+              <button id="analyze-paste" class="primary-button" type="button">붙여넣은 명단 확인</button>
+            </div>
+          </div>
+          <section id="column-mapping" class="flow-card" hidden><h3>3. 열 연결</h3><p class="help-text">열 이름이 다르면 각 항목에 맞는 열을 선택하세요.</p><div id="mapping-fields" class="mapping-grid"></div><div class="inline-options"><label><input type="radio" name="roster-merge" value="replace" checked /> 기존 명단 교체</label><label><input type="radio" name="roster-merge" value="append" /> 기존 명단에 추가</label></div><button id="build-roster-preview" class="primary-button" type="button">명단 확인표 만들기</button></section>
+          <section id="roster-import-preview" class="flow-card" hidden><div class="section-heading"><div><h3>4. 명단 확인</h3><p id="import-summary" class="help-text"></p></div><button id="apply-roster-import" class="primary-button" type="button">이 명단 적용</button></div><div id="import-issues" class="issue-list"></div><div class="table-scroll"><table class="data-table"><thead id="import-table-head"></thead><tbody id="import-table-body"></tbody></table></div></section>
+        </section>
+
+        <section class="dialog-page" data-roster-page="auto">
+          <div class="auto-topline"><div class="inline-options"><label><input type="radio" name="layout-mode" value="event" checked /> 행사용</label><label><input type="radio" name="layout-mode" value="class" /> 수업용</label></div><button id="undo-layout" class="text-button" type="button" disabled>이전 배치로 되돌리기</button></div>
+          <div id="event-layout-settings" class="settings-grid">
+            <label>중앙 배치 방향<select id="center-direction"><option value="left">5 → 4 → 6</option><option value="right">5 → 6 → 4</option></select></label>
+            <label>내빈 시작열<select id="vip-start-row"></select></label><label>내빈 마지막열<select id="vip-end-row"></select></label>
+            <fieldset><legend>내빈 구역</legend><div id="vip-zones" class="check-grid"></div></fieldset>
+            <label>일반 시작열<select id="general-start-row"></select></label><label>일반 마지막열<select id="general-end-row"></select></label>
+            <fieldset><legend>일반 구역</legend><div id="general-zones" class="check-grid"></div></fieldset>
+          </div>
+          <div id="class-layout-settings" class="settings-grid" hidden>
+            <label>배치 방식<select id="class-pattern"><option value="random">사용 가능한 전체 좌석에서 무작위</option><option value="front">앞줄 좌석 확보 후 학생만 섞기</option></select></label>
+            <label>시작열<select id="class-start-row"></select></label><label>마지막열<select id="class-end-row"></select></label>
+            <fieldset><legend>사용 구역</legend><div id="class-zones" class="check-grid"></div></fieldset>
+          </div>
+          <div class="flow-card compact-card"><div class="inline-options"><label><input type="radio" name="layout-scope" value="unassigned" checked /> 기존 배정 보존</label><label><input type="radio" name="layout-scope" value="all" /> 전체 재배치</label><label><input id="allow-partial" type="checkbox" /> 좌석 부족 시 가능한 인원만 배치</label></div><div class="button-row"><button id="preview-layout" class="primary-button" type="button">배치 미리보기</button><button id="reshuffle-layout" class="text-button" type="button">다시 섞기</button><button id="cancel-layout-preview" class="text-button" type="button" disabled>미리보기 취소</button></div></div>
+          <section id="layout-preview" class="flow-card" hidden><div class="section-heading"><div><h3>배치 미리보기</h3><p id="layout-summary" class="help-text"></p></div><button id="apply-layout" class="primary-button" type="button">이 배치 적용</button></div><div id="layout-conflicts" class="issue-list"></div><div class="table-scroll preview-scroll"><table class="data-table"><thead><tr><th>이름</th><th>배정좌석</th><th>상태</th></tr></thead><tbody id="layout-table-body"></tbody></table></div></section>
+        </section>
+
+        <section class="dialog-page" data-roster-page="list">
+          <div class="list-toolbar"><input id="roster-search" type="search" placeholder="이름·소속·식별번호 검색" /><label><input id="unassigned-only" type="checkbox" /> 미배정만 보기</label><button id="add-participant" class="text-button" type="button">참가자 추가</button></div>
+          <div class="list-summary"><strong id="roster-count">명단 0명</strong><span id="roster-unassigned-count">아직 자리가 없는 사람 0명</span></div>
+          <div class="export-row"><button id="export-name-xlsx" class="text-button" type="button">이름순 .xlsx</button><button id="export-seat-xlsx" class="text-button" type="button">좌석순 .xlsx</button><button id="export-name-csv" class="text-button" type="button">이름순 .csv</button><button id="export-seat-csv" class="text-button" type="button">좌석순 .csv</button><label>자리 맞바꾸기<select id="swap-first"><option value="">첫 사람</option></select></label><select id="swap-second"><option value="">둘째 사람</option></select><button id="swap-seats" class="text-button" type="button">맞바꾸기</button></div>
+          <div class="table-scroll list-table-scroll"><table class="data-table"><thead><tr><th>이름</th><th>소속·직함 또는 반</th><th>식별번호</th><th>배정좌석</th><th>고정</th><th>상태</th><th>작업</th></tr></thead><tbody id="roster-list-body"></tbody></table></div>
+        </section>
+      </div>
+    </dialog>
+
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+    <script src="vendor/xlsx.full.min.js"></script>
     <script src="seat-data.js"></script>
+    <script src="roster-engine.js"></script>
     <script src="app.js"></script>
+    <script src="roster-ui.js"></script>
   </body>
 </html>

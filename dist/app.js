@@ -12,7 +12,9 @@
   const SEAT_PITCH = SEAT_WIDTH + SEAT_GAP;
   const DIAGONAL_STEP = SEAT_PITCH / Math.sqrt(2);
   const OUTER_AISLE_CENTER_GAP = 68;
-  const EMPTY_RECORD = Object.freeze({ status: 'empty', name: '', org: '', note: '', color: COLORS[0] });
+  const EMPTY_RECORD = Object.freeze({ status: 'empty', name: '', org: '', note: '', color: COLORS[0], participantId: '', fixed: false });
+  const CONTENT_BOUNDS = Object.freeze({ left: 52, top: 20, right: 1548, bottom: 990 });
+  const MAX_SCALE = 2.5;
 
   const seatById = new Map(blueprint.seats.map((seat) => [seat.id, seat]));
   const seatElements = new Map();
@@ -24,6 +26,13 @@
   let toastTimer = null;
   let transform = { scale: 1, x: 0, y: 0 };
   let dragState = null;
+  const pointerPositions = new Map();
+  let pinchState = null;
+  let wheelFrame = null;
+  let wheelDelta = 0;
+  let wheelPoint = null;
+  let fitScale = .28;
+  let isFitView = true;
   let restoreLabelMode = null;
 
   const els = {
@@ -49,6 +58,7 @@
     personName: document.getElementById('person-name'),
     personOrg: document.getElementById('person-org'),
     personNote: document.getElementById('person-note'),
+    seatFixed: document.getElementById('seat-fixed'),
     colorOptions: document.getElementById('color-options'),
     clearSeat: document.getElementById('clear-seat'),
     searchInput: document.getElementById('search-input'),
@@ -70,9 +80,11 @@
   function createEmptyState() {
     return {
       schema: SCHEMA,
-      version: 1,
+      version: 2,
       event: { name: '', date: '' },
       assignments: {},
+      participants: [],
+      layoutSettings: {},
       updatedAt: new Date().toISOString()
     };
   }
@@ -85,7 +97,13 @@
   }
 
   function drawStaticMap() {
-    const stage = svgNode('g', { class: 'stage' });
+    const stage = svgNode('a', {
+      class: 'stage stage-link',
+      href: 'https://erakeun.github.io/conference-hall-led-maker/',
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      'aria-label': '중강당 LED 현수막 제작기 열기'
+    });
     stage.append(
       svgNode('rect', { class: 'stage-shell', x: 520, y: 28, width: 560, height: 92, rx: 14 }),
       svgNode('rect', { class: 'stage-accent', x: 520, y: 28, width: 560, height: 8, rx: 4 }),
@@ -131,6 +149,16 @@
         svgNode('text', { class: 'row-label', x: 621, y }, row),
         svgNode('text', { class: 'row-label', x: 979, y }, row)
       );
+    });
+
+    [650, 800, 950].forEach((x) => {
+      const door = svgNode('g', { class: 'entrance', transform: `translate(${x} 952)`, 'aria-label': '객석 뒤쪽 출입문' });
+      door.append(
+        svgNode('path', { class: 'entrance-wall', d: 'M -36 0 H -18 M 18 0 H 36' }),
+        svgNode('path', { class: 'entrance-leaf', d: 'M -18 0 V -24 A 24 24 0 0 1 6 0 M 18 0 V -24 A 24 24 0 0 0 -6 0' }),
+        svgNode('text', { class: 'entrance-label', x: 0, y: 25 }, '출입문')
+      );
+      els.mapStatic.append(door);
     });
   }
 
@@ -275,12 +303,14 @@
       name: String(record.name || '').slice(0, 40),
       org: String(record.org || '').slice(0, 80),
       note: String(record.note || '').slice(0, 240),
-      color: COLORS.includes(record.color) ? record.color : COLORS[0]
+      color: COLORS.includes(record.color) ? record.color : COLORS[0],
+      participantId: String(record.participantId || '').slice(0, 80),
+      fixed: Boolean(record.fixed)
     };
   }
 
   function validateImportedData(data) {
-    if (!data || typeof data !== 'object' || data.schema !== SCHEMA || data.version !== 1) {
+    if (!data || typeof data !== 'object' || data.schema !== SCHEMA || ![1, 2].includes(data.version)) {
       throw new Error('이 도구에서 저장한 JSON 파일이 아닙니다.');
     }
     if (!data.event || typeof data.event !== 'object' || !data.assignments || typeof data.assignments !== 'object' || Array.isArray(data.assignments)) {
@@ -294,6 +324,17 @@
       const normalized = normalizeRecord(record);
       if (normalized.status !== 'empty' || normalized.name || normalized.org || normalized.note) next.assignments[id] = normalized;
     });
+    if (data.version >= 2 && Array.isArray(data.participants)) {
+      const ids = new Set();
+      next.participants = data.participants.map((person, index) => {
+        if (!person || typeof person !== 'object') throw new Error(`명단 ${index + 1}행이 올바르지 않습니다.`);
+        const normalized = window.ROSTER_ENGINE.participant(person, index, person.mode, (position) => `P-${String(position + 1).padStart(6, '0')}`);
+        if (!normalized.name || ids.has(normalized.id)) throw new Error(`명단 ${index + 1}행의 이름 또는 참가자 ID를 확인하세요.`);
+        ids.add(normalized.id);
+        return normalized;
+      });
+      next.layoutSettings = data.layoutSettings && typeof data.layoutSettings === 'object' ? { ...data.layoutSettings } : {};
+    }
     next.updatedAt = typeof data.updatedAt === 'string' ? data.updatedAt : new Date().toISOString();
     return next;
   }
@@ -385,6 +426,7 @@
     els.personName.value = record.name;
     els.personOrg.value = record.org;
     els.personNote.value = record.note;
+    els.seatFixed.checked = Boolean(record.fixed);
     activeColor = record.color || COLORS[0];
     updateColorButtons();
     updateFormDisabledState();
@@ -394,12 +436,14 @@
     els.editorPanel.classList.add('is-open');
     els.editorPanel.setAttribute('aria-hidden', 'false');
     els.panelScrim.classList.add('is-open');
+    window.requestAnimationFrame(recalculateView);
   }
 
   function closeEditor() {
     els.editorPanel.classList.remove('is-open');
     els.editorPanel.setAttribute('aria-hidden', 'true');
     els.panelScrim.classList.remove('is-open');
+    window.requestAnimationFrame(recalculateView);
   }
 
   function createColorOptions() {
@@ -436,6 +480,8 @@
     [els.personName, els.personOrg, els.personNote].forEach((input) => {
       input.disabled = disabled;
     });
+    els.seatFixed.disabled = disabled;
+    if (disabled) els.seatFixed.checked = false;
     els.colorOptions.setAttribute('aria-disabled', String(disabled));
     Array.from(els.colorOptions.children).forEach((button) => { button.disabled = disabled; });
   }
@@ -444,12 +490,15 @@
     event.preventDefault();
     if (!selectedSeatId) return;
     const status = String(new FormData(els.seatForm).get('seat-status') || 'empty');
+    const previousRecord = getRecord(selectedSeatId);
     const record = normalizeRecord({
       status,
       name: status === 'unavailable' ? '' : els.personName.value,
       org: status === 'unavailable' ? '' : els.personOrg.value,
       note: status === 'unavailable' ? '' : els.personNote.value,
-      color: activeColor
+      color: activeColor,
+      participantId: status === 'assigned' ? previousRecord.participantId : '',
+      fixed: status === 'assigned' && els.seatFixed.checked
     });
     if (status === 'empty' && (record.name || record.org || record.note)) record.status = 'assigned';
     if (record.status === 'empty') delete state.assignments[selectedSeatId];
@@ -472,7 +521,7 @@
   }
 
   function hasContent() {
-    return Boolean(state.event.name || state.event.date || Object.keys(state.assignments).length);
+    return Boolean(state.event.name || state.event.date || Object.keys(state.assignments).length || state.participants.length);
   }
 
   function setSaveStatus(saving) {
@@ -543,7 +592,7 @@
   }
 
   function resetAll() {
-    if (hasContent() && !window.confirm('행사 정보와 406석의 배정 내용을 모두 초기화할까요?')) return;
+    if (hasContent() && !window.confirm('행사 정보, 참가자 명단, 406석의 배정 내용을 모두 초기화할까요?')) return;
     state = createEmptyState();
     selectedSeatId = null;
     syncEventFields();
@@ -574,9 +623,11 @@
     }
     const results = blueprint.seats.filter((seat) => {
       const record = getRecord(seat.id);
+      const person = record.participantId ? state.participants.find((item) => item.id === record.participantId) : null;
       return seat.id.toLowerCase().includes(normalized)
         || record.name.toLocaleLowerCase('ko-KR').includes(normalized)
-        || record.org.toLocaleLowerCase('ko-KR').includes(normalized);
+        || record.org.toLocaleLowerCase('ko-KR').includes(normalized)
+        || Boolean(person && person.identifier.toLocaleLowerCase('ko-KR').includes(normalized));
     }).slice(0, 40);
     if (!results.length) {
       const empty = document.createElement('p');
@@ -592,7 +643,8 @@
         const title = document.createElement('strong');
         title.textContent = record.name ? `${record.name} · ${seat.id}` : seat.id;
         const meta = document.createElement('span');
-        meta.textContent = [seat.zoneName, `${seat.row}열`, record.org].filter(Boolean).join(' · ');
+        const person = record.participantId ? state.participants.find((item) => item.id === record.participantId) : null;
+        meta.textContent = [seat.zoneName, `${seat.row}열`, record.org, person && person.identifier].filter(Boolean).join(' · ');
         button.append(title, meta);
         button.addEventListener('click', () => {
           selectSeat(seat.id, { focusMap: true });
@@ -619,32 +671,53 @@
   }
 
   function applyTransform() {
+    constrainPan();
     els.seatMap.style.transform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`;
     els.zoomValue.value = `${Math.round(transform.scale * 100)}%`;
     els.zoomValue.textContent = `${Math.round(transform.scale * 100)}%`;
+    els.zoomOut.disabled = transform.scale <= fitScale + .0001;
+    els.zoomIn.disabled = transform.scale >= MAX_SCALE - .0001;
   }
 
-  function fitMap() {
+  function calculateFitScale() {
+    const width = els.mapViewport.clientWidth;
+    const height = els.mapViewport.clientHeight;
+    if (!width || !height) return fitScale;
+    const padding = width < 700 ? 20 : 34;
+    const contentWidth = CONTENT_BOUNDS.right - CONTENT_BOUNDS.left;
+    const contentHeight = CONTENT_BOUNDS.bottom - CONTENT_BOUNDS.top;
+    return clamp(Math.min((width - padding * 2) / contentWidth, (height - padding * 2) / contentHeight), .2, 1.35);
+  }
+
+  function centerContent() {
+    const width = els.mapViewport.clientWidth;
+    const height = els.mapViewport.clientHeight;
+    transform.x = width / 2 - ((CONTENT_BOUNDS.left + CONTENT_BOUNDS.right) / 2) * transform.scale;
+    transform.y = height / 2 - ((CONTENT_BOUNDS.top + CONTENT_BOUNDS.bottom) / 2) * transform.scale;
+  }
+
+  function constrainPan() {
     const width = els.mapViewport.clientWidth;
     const height = els.mapViewport.clientHeight;
     if (!width || !height) return;
-    const padding = width < 700 ? 20 : 34;
-    const scale = clamp(Math.min((width - padding * 2) / 1600, (height - padding * 2) / 1000), .28, 1.35);
-    transform.scale = scale;
-    transform.x = (width - 1600 * scale) / 2;
-    transform.y = (height - 1000 * scale) / 2;
+    const margin = width < 700 ? 18 : 28;
+    const contentWidth = (CONTENT_BOUNDS.right - CONTENT_BOUNDS.left) * transform.scale;
+    const contentHeight = (CONTENT_BOUNDS.bottom - CONTENT_BOUNDS.top) * transform.scale;
+    if (contentWidth <= width - margin * 2) transform.x = (width - contentWidth) / 2 - CONTENT_BOUNDS.left * transform.scale;
+    else transform.x = clamp(transform.x, width - margin - CONTENT_BOUNDS.right * transform.scale, margin - CONTENT_BOUNDS.left * transform.scale);
+    if (contentHeight <= height - margin * 2) transform.y = (height - contentHeight) / 2 - CONTENT_BOUNDS.top * transform.scale;
+    else transform.y = clamp(transform.y, height - margin - CONTENT_BOUNDS.bottom * transform.scale, margin - CONTENT_BOUNDS.top * transform.scale);
+  }
+
+  function fitMap() {
+    fitScale = calculateFitScale();
+    transform.scale = fitScale;
+    centerContent();
+    isFitView = true;
     applyTransform();
   }
 
   function setInitialView() {
-    if (els.mapViewport.clientWidth < 700) {
-      const width = els.mapViewport.clientWidth;
-      transform.scale = .55;
-      transform.x = (width - 1600 * transform.scale) / 2;
-      transform.y = 18;
-      applyTransform();
-      return;
-    }
     fitMap();
   }
 
@@ -653,12 +726,27 @@
     const px = typeof clientX === 'number' ? clientX - rect.left : rect.width / 2;
     const py = typeof clientY === 'number' ? clientY - rect.top : rect.height / 2;
     const oldScale = transform.scale;
-    const nextScale = clamp(oldScale * factor, .28, 2.5);
+    fitScale = calculateFitScale();
+    const nextScale = clamp(oldScale * factor, fitScale, MAX_SCALE);
+    if (Math.abs(nextScale - oldScale) < .00001) return;
     const mapX = (px - transform.x) / oldScale;
     const mapY = (py - transform.y) / oldScale;
     transform.scale = nextScale;
     transform.x = px - mapX * nextScale;
     transform.y = py - mapY * nextScale;
+    isFitView = nextScale <= fitScale + .0001;
+    applyTransform();
+  }
+
+  function recalculateView() {
+    const wasFit = isFitView;
+    const previousFit = fitScale;
+    fitScale = calculateFitScale();
+    if (wasFit || transform.scale <= previousFit + .0001 || transform.scale < fitScale) {
+      transform.scale = fitScale;
+      centerContent();
+      isFitView = true;
+    }
     applyTransform();
   }
 
@@ -667,31 +755,77 @@
     const pos = seatPosition(seat);
     const width = els.mapViewport.clientWidth;
     const height = els.mapViewport.clientHeight;
-    const nextScale = Math.max(transform.scale, .78);
+    const nextScale = Math.max(transform.scale, Math.min(MAX_SCALE, Math.max(fitScale, .78)));
     transform.scale = nextScale;
     transform.x = width / 2 - (pos.x + pos.width / 2) * nextScale;
     transform.y = height / 2 - (pos.y + pos.height / 2) * nextScale;
+    isFitView = false;
     applyTransform();
   }
 
   function onPointerDown(event) {
     if (event.button !== 0 || event.target.closest('.seat')) return;
-    dragState = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: transform.x, originY: transform.y };
+    pointerPositions.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointerPositions.size === 2) {
+      const points = Array.from(pointerPositions.values());
+      const centerX = (points[0].x + points[1].x) / 2;
+      const centerY = (points[0].y + points[1].y) / 2;
+      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      const rect = els.mapViewport.getBoundingClientRect();
+      pinchState = { distance, scale: transform.scale, mapX: (centerX - rect.left - transform.x) / transform.scale, mapY: (centerY - rect.top - transform.y) / transform.scale };
+      dragState = null;
+    } else {
+      dragState = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: transform.x, originY: transform.y };
+    }
     els.mapViewport.setPointerCapture(event.pointerId);
     els.mapViewport.classList.add('is-panning');
   }
 
   function onPointerMove(event) {
+    if (!pointerPositions.has(event.pointerId)) return;
+    pointerPositions.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinchState && pointerPositions.size >= 2) {
+      const points = Array.from(pointerPositions.values()).slice(0, 2);
+      const centerX = (points[0].x + points[1].x) / 2;
+      const centerY = (points[0].y + points[1].y) / 2;
+      const rect = els.mapViewport.getBoundingClientRect();
+      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      fitScale = calculateFitScale();
+      transform.scale = clamp(pinchState.scale * (distance / Math.max(1, pinchState.distance)), fitScale, MAX_SCALE);
+      transform.x = centerX - rect.left - pinchState.mapX * transform.scale;
+      transform.y = centerY - rect.top - pinchState.mapY * transform.scale;
+      isFitView = transform.scale <= fitScale + .0001;
+      applyTransform();
+      return;
+    }
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     transform.x = dragState.originX + event.clientX - dragState.startX;
     transform.y = dragState.originY + event.clientY - dragState.startY;
+    isFitView = false;
     applyTransform();
   }
 
   function endPointer(event) {
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    dragState = null;
+    pointerPositions.delete(event.pointerId);
+    pinchState = null;
+    if (dragState && dragState.pointerId === event.pointerId) dragState = null;
     els.mapViewport.classList.remove('is-panning');
+  }
+
+  function onWheel(event) {
+    if (event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? els.mapViewport.clientHeight : 1;
+    wheelDelta += clamp(event.deltaY * unit, -120, 120);
+    wheelPoint = { x: event.clientX, y: event.clientY };
+    if (wheelFrame) return;
+    wheelFrame = window.requestAnimationFrame(() => {
+      const delta = clamp(wheelDelta, -160, 160);
+      const factor = clamp(Math.exp(-delta * .0015), .82, 1.22);
+      wheelDelta = 0;
+      wheelFrame = null;
+      zoomAt(factor, wheelPoint.x, wheelPoint.y);
+    });
   }
 
   function showToast(message) {
@@ -723,13 +857,10 @@
     });
     els.showSeatId.addEventListener('click', () => setLabelMode('id'));
     els.showAssignee.addEventListener('click', () => setLabelMode('name'));
-    els.zoomOut.addEventListener('click', () => zoomAt(1 / 1.2));
-    els.zoomIn.addEventListener('click', () => zoomAt(1.2));
+    els.zoomOut.addEventListener('click', () => zoomAt(1 / 1.14));
+    els.zoomIn.addEventListener('click', () => zoomAt(1.14));
     els.zoomFit.addEventListener('click', fitMap);
-    els.mapViewport.addEventListener('wheel', (event) => {
-      event.preventDefault();
-      zoomAt(event.deltaY < 0 ? 1.12 : 1 / 1.12, event.clientX, event.clientY);
-    }, { passive: false });
+    els.mapViewport.addEventListener('wheel', onWheel, { passive: false });
     els.mapViewport.addEventListener('pointerdown', onPointerDown);
     els.mapViewport.addEventListener('pointermove', onPointerMove);
     els.mapViewport.addEventListener('pointerup', endPointer);
@@ -739,9 +870,8 @@
     els.importFile.addEventListener('change', () => importJson(els.importFile.files[0]));
     els.resetButton.addEventListener('click', resetAll);
     els.printButton.addEventListener('click', () => window.print());
-    window.addEventListener('resize', () => {
-      if (window.innerWidth >= 700) fitMap();
-    });
+    window.addEventListener('resize', recalculateView);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', recalculateView);
     window.addEventListener('beforeprint', () => {
       restoreLabelMode = labelMode;
       setLabelMode('name');
@@ -861,6 +991,31 @@
     });
   }
 
+  window.SEAT_APP = {
+    blueprint,
+    colors: COLORS,
+    getState: () => state,
+    getRecord,
+    selectSeat,
+    validateImportedData,
+    notifyStateChanged(message) {
+      renderAll();
+      queueSave();
+      if (message) showToast(message);
+    },
+    replaceAssignments(assignments, message) {
+      const next = {};
+      Object.entries(assignments || {}).forEach(([id, record]) => {
+        if (seatById.has(id)) next[id] = normalizeRecord(record);
+      });
+      state.assignments = next;
+      this.notifyStateChanged(message);
+    },
+    showToast,
+    recalculateView,
+    closeEditor
+  };
+
   function init() {
     runBlueprintChecks();
     drawStaticMap();
@@ -871,6 +1026,7 @@
     syncEventFields();
     renderAll();
     registerWebMcpTools();
+    if (typeof ResizeObserver === 'function') new ResizeObserver(recalculateView).observe(els.mapViewport);
     window.requestAnimationFrame(setInitialView);
   }
 
