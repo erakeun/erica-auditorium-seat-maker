@@ -13,11 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 소스 받기
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 자바스크립트 문법 검사
         run: |
           node --check dist/seat-data.js
           node --check dist/app.js
       - name: 406석 데이터 검사
         run: node scripts/validate.cjs
-
