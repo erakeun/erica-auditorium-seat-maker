@@ -6,14 +6,11 @@
   const SCHEMA = 'erica-conference-hall-3f-seating';
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const COLORS = ['#0d5c8f', '#169873', '#d36b2c', '#7457b8', '#c1456f', '#198fa4', '#586b7a'];
-  const SEAT_WIDTH = 32;
-  const SEAT_HEIGHT = 34;
-  const SEAT_GAP = 6;
-  const SEAT_PITCH = SEAT_WIDTH + SEAT_GAP;
-  const DIAGONAL_STEP = SEAT_PITCH / Math.sqrt(2);
-  const OUTER_AISLE_CENTER_GAP = 68;
+  const layout = window.SEAT_LAYOUT;
+  const SEAT_WIDTH = layout.width;
+  const SEAT_HEIGHT = layout.height;
   const EMPTY_RECORD = Object.freeze({ status: 'empty', name: '', org: '', note: '', color: COLORS[0], participantId: '', fixed: false });
-  const CONTENT_BOUNDS = Object.freeze({ left: 52, top: 20, right: 1548, bottom: 990 });
+  let contentBounds = { left: 0, top: 0, right: 1800, bottom: 1320 };
   const MAX_SCALE = 2.5;
 
   const seatById = new Map(blueprint.seats.map((seat) => [seat.id, seat]));
@@ -105,21 +102,22 @@
       'aria-label': '중강당 LED 현수막 제작기 열기'
     });
     stage.append(
-      svgNode('rect', { class: 'stage-shell', x: 520, y: 28, width: 560, height: 92, rx: 14 }),
-      svgNode('rect', { class: 'stage-accent', x: 520, y: 28, width: 560, height: 8, rx: 4 }),
-      svgNode('text', { class: 'stage-title', x: 800, y: 72 }, '스크린 · 무대'),
-      svgNode('text', { class: 'stage-subtitle', x: 800, y: 98 }, 'SCREEN / STAGE · 화면 위쪽'),
-      svgNode('path', { d: 'M 700 133 Q 800 152 900 133', fill: 'none', stroke: '#96aebb', 'stroke-width': 2 }),
-      svgNode('text', { class: 'orientation-note', x: 800, y: 158 }, 'A열  ─  무대에 가장 가까운 열')
+      svgNode('path', { class: 'stage-floor', d: 'M 580 75 H 1220 L 1290 220 H 510 Z' }),
+      svgNode('text', { class: 'stage-title', x: 900, y: 152 }, '무대'),
+      svgNode('text', { class: 'stage-subtitle', x: 900, y: 178 }, 'STAGE'),
+      svgNode('path', { class: 'stage-front', d: 'M 510 220 H 1290' }),
+      svgNode('rect', { class: 'screen-panel', x: 610, y: 24, width: 580, height: 34, rx: 4 }),
+      svgNode('text', { class: 'screen-label', x: 900, y: 47 }, '스크린 · 현수막 제작기 ↗')
     );
     els.mapStatic.append(stage);
+    els.mapStatic.append(svgNode('text', { class: 'orientation-note', x: 900, y: 298 }, '무대 앞 여유 공간 · 화면 위쪽이 무대'));
 
     const labels = [
-      { x: 205, y: 760, id: 'L1', name: '왼쪽 외측', count: 60 },
-      { x: 517, y: 190, id: 'L2', name: '왼쪽 내측', count: 82 },
-      { x: 800, y: 190, id: 'C', name: '중앙', count: 126 },
-      { x: 1083, y: 190, id: 'R2', name: '오른쪽 내측', count: 79 },
-      { x: 1395, y: 760, id: 'R1', name: '오른쪽 외측', count: 59 }
+      { x: 178, y: 975, id: 'L1', name: '왼쪽 외측', count: 60 },
+      { x: 555, y: 356, id: 'L2', name: '왼쪽 내측', count: 82 },
+      { x: 900, y: 356, id: 'C', name: '중앙', count: 126 },
+      { x: 1245, y: 356, id: 'R2', name: '오른쪽 내측', count: 79 },
+      { x: 1622, y: 975, id: 'R1', name: '오른쪽 외측', count: 59 }
     ];
     labels.forEach((label) => {
       els.mapStatic.append(
@@ -128,15 +126,10 @@
       );
     });
 
-    const leftOuterAisle = outerAisleGeometry('left');
-    const rightOuterAisle = outerAisleGeometry('right');
-    const firstRowCenter = rowY(0) + SEAT_HEIGHT / 2;
-    const lastRowCenter = rowY(13) + SEAT_HEIGHT / 2;
     const aisles = [
-      leftOuterAisle,
-      { labelX: 611, labelY: 222, d: `M 611 ${firstRowCenter - 34} L 611 ${lastRowCenter + 34}` },
-      { labelX: 989, labelY: 222, d: `M 989 ${firstRowCenter - 34} L 989 ${lastRowCenter + 34}` },
-      rightOuterAisle
+      layout.outerAisleGeometry('left', blueprint),
+      ...layout.aisleCenters.map((x) => ({ labelX: x, labelY: 390, d: `M ${x} 403 L ${x} ${layout.doorY - 44}` })),
+      layout.outerAisleGeometry('right', blueprint)
     ];
     aisles.forEach((aisle) => {
       els.mapStatic.append(svgNode('path', { class: 'aisle-line', d: aisle.d }));
@@ -144,118 +137,43 @@
     });
 
     blueprint.rows.forEach((row, rowIndex) => {
-      const y = rowY(rowIndex) + 17;
+      const y = layout.rowY(rowIndex) + SEAT_HEIGHT / 2;
       els.mapStatic.append(
-        svgNode('text', { class: 'row-label', x: 621, y }, row),
-        svgNode('text', { class: 'row-label', x: 979, y }, row)
+        svgNode('text', { class: 'row-label', x: 715, y }, row),
+        svgNode('text', { class: 'row-label', x: 1085, y }, row)
       );
     });
-
-    [650, 800, 950].forEach((x) => {
-      const door = svgNode('g', { class: 'entrance', transform: `translate(${x} 952)`, 'aria-label': '객석 뒤쪽 출입문' });
+    // Each group is one double-leaf entrance, aligned with the aisle, not a seat.
+    layout.aisleCenters.forEach((x, index) => {
+      const door = svgNode('g', { class: 'entrance', transform: `translate(${x} ${layout.doorY})`, 'aria-label': `객석 뒤쪽 ${index ? '오른쪽' : '왼쪽'} 출입문` });
       door.append(
-        svgNode('path', { class: 'entrance-wall', d: 'M -36 0 H -18 M 18 0 H 36' }),
-        svgNode('path', { class: 'entrance-leaf', d: 'M -18 0 V -24 A 24 24 0 0 1 6 0 M 18 0 V -24 A 24 24 0 0 0 -6 0' }),
-        svgNode('text', { class: 'entrance-label', x: 0, y: 25 }, '출입문')
+        svgNode('path', { class: 'entrance-wall', d: 'M -48 0 H -28 M 28 0 H 48' }),
+        svgNode('path', { class: 'entrance-leaf', d: 'M -28 0 V -28 A 28 28 0 0 1 0 0 M 28 0 V -28 A 28 28 0 0 0 0 0' }),
+        svgNode('text', { class: 'entrance-label', x: 0, y: 29 }, '출입문')
       );
       els.mapStatic.append(door);
     });
-  }
-
-  function rowY(rowIndex) {
-    return 230 + rowIndex * 51.5;
-  }
-
-  function rowWidth(count) {
-    return count * SEAT_WIDTH + (count - 1) * SEAT_GAP;
-  }
-
-  function innerRowEdges(zoneId, rowIndex, count) {
-    const width = rowWidth(count);
-    if (zoneId === 'L2') return { left: 590 - width, right: 590 };
-    if (zoneId === 'R2') return { left: 1010, right: 1010 + width };
-    return { left: 800 - width / 2, right: 800 + width / 2 };
+    els.mapStatic.append(svgNode('text', { class: 'orientation-note', x: 900, y: 1216 }, '뒤쪽 보행 공간'));
   }
 
   function seatPosition(seat) {
-    const row = seat.rowIndex;
-    const centerY = rowY(row) + SEAT_HEIGHT / 2;
-    let seatCenterX;
-    let seatCenterY = centerY;
-    let rotation = 0;
-
-    if (seat.zoneId === 'C') {
-      const edges = innerRowEdges('C', row, seat.rowCount);
-      seatCenterX = edges.left + SEAT_WIDTH / 2 + (seat.number - 1) * SEAT_PITCH;
-    } else if (seat.zoneId === 'L2') {
-      const edges = innerRowEdges('L2', row, seat.rowCount);
-      seatCenterX = edges.left + SEAT_WIDTH / 2 + (seat.number - 1) * SEAT_PITCH;
-    } else if (seat.zoneId === 'R2') {
-      const edges = innerRowEdges('R2', row, seat.rowCount);
-      seatCenterX = edges.left + SEAT_WIDTH / 2 + (seat.number - 1) * SEAT_PITCH;
-    } else if (seat.zoneId === 'L1') {
-      const innerCount = blueprint.zones.find((zone) => zone.id === 'L2').counts[row];
-      const innerEdges = innerRowEdges('L2', row, innerCount);
-      const anchorX = innerEdges.left + SEAT_WIDTH / 2 - OUTER_AISLE_CENTER_GAP;
-      const outwardSteps = seat.rowCount - seat.number;
-      seatCenterX = anchorX - outwardSteps * DIAGONAL_STEP;
-      seatCenterY = centerY - outwardSteps * DIAGONAL_STEP;
-      rotation = 45;
-    } else {
-      const innerCount = blueprint.zones.find((zone) => zone.id === 'R2').counts[row];
-      const innerEdges = innerRowEdges('R2', row, innerCount);
-      const anchorX = innerEdges.right - SEAT_WIDTH / 2 + OUTER_AISLE_CENTER_GAP;
-      const outwardSteps = seat.number - 1;
-      seatCenterX = anchorX + outwardSteps * DIAGONAL_STEP;
-      seatCenterY = centerY - outwardSteps * DIAGONAL_STEP;
-      rotation = -45;
-    }
-
-    return {
-      x: seatCenterX - SEAT_WIDTH / 2,
-      y: seatCenterY - SEAT_HEIGHT / 2,
-      width: SEAT_WIDTH,
-      height: SEAT_HEIGHT,
-      rotation,
-      centerX: seatCenterX,
-      centerY: seatCenterY
-    };
+    return layout.seatPosition(seat, blueprint);
   }
 
-  function outerAisleGeometry(side) {
-    const outerZoneId = side === 'left' ? 'L1' : 'R1';
-    const innerZoneId = side === 'left' ? 'L2' : 'R2';
-    const points = [];
-    for (let rowIndex = 0; rowIndex < 9; rowIndex += 1) {
-      const outerCount = blueprint.zones.find((zone) => zone.id === outerZoneId).counts[rowIndex];
-      const innerCount = blueprint.zones.find((zone) => zone.id === innerZoneId).counts[rowIndex];
-      const outerNumber = side === 'left' ? outerCount : 1;
-      const innerNumber = side === 'left' ? 1 : innerCount;
-      const outerSeat = seatById.get(`${outerZoneId}-${blueprint.rows[rowIndex]}-${String(outerNumber).padStart(2, '0')}`);
-      const innerSeat = seatById.get(`${innerZoneId}-${blueprint.rows[rowIndex]}-${String(innerNumber).padStart(2, '0')}`);
-      const outerPos = seatPosition(outerSeat);
-      const innerPos = seatPosition(innerSeat);
-      points.push({
-        x: (outerPos.centerX + innerPos.centerX) / 2,
-        y: (outerPos.centerY + innerPos.centerY) / 2
-      });
-    }
-    const commands = [`M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`];
-    for (let index = 1; index < points.length; index += 1) {
-      const previous = points[index - 1];
-      const current = points[index];
-      const middleY = (previous.y + current.y) / 2;
-      commands.push(
-        `L ${previous.x.toFixed(2)} ${middleY.toFixed(2)}`,
-        `L ${current.x.toFixed(2)} ${middleY.toFixed(2)}`,
-        `L ${current.x.toFixed(2)} ${current.y.toFixed(2)}`
-      );
-    }
-    return {
-      labelX: points[0].x,
-      labelY: points[0].y - 14,
-      d: commands.join(' ')
+  function measureContent() {
+    // SVG group bounds include rotated seat outlines and every visible label.
+    const boxes = [els.mapStatic.getBBox(), els.mapSeats.getBBox()];
+    contentBounds = {
+      left: Math.min(...boxes.map((box) => box.x)) - 5,
+      top: Math.min(...boxes.map((box) => box.y)) - 5,
+      right: Math.max(...boxes.map((box) => box.x + box.width)) + 5,
+      bottom: Math.max(...boxes.map((box) => box.y + box.height)) + 5
     };
+    const width = contentBounds.right - contentBounds.left;
+    const height = contentBounds.bottom - contentBounds.top;
+    document.getElementById('seat-svg').setAttribute('viewBox', `${contentBounds.left} ${contentBounds.top} ${width} ${height}`);
+    els.seatMap.style.width = `${width}px`;
+    els.seatMap.style.height = `${height}px`;
   }
 
   function drawSeats() {
@@ -684,16 +602,16 @@
     const height = els.mapViewport.clientHeight;
     if (!width || !height) return fitScale;
     const padding = width < 700 ? 20 : 34;
-    const contentWidth = CONTENT_BOUNDS.right - CONTENT_BOUNDS.left;
-    const contentHeight = CONTENT_BOUNDS.bottom - CONTENT_BOUNDS.top;
-    return clamp(Math.min((width - padding * 2) / contentWidth, (height - padding * 2) / contentHeight), .2, 1.35);
+    const contentWidth = contentBounds.right - contentBounds.left;
+    const contentHeight = contentBounds.bottom - contentBounds.top;
+    return Math.min(MAX_SCALE, Math.max(.01, Math.min((width - padding * 2) / contentWidth, (height - padding * 2) / contentHeight)));
   }
 
   function centerContent() {
     const width = els.mapViewport.clientWidth;
     const height = els.mapViewport.clientHeight;
-    transform.x = width / 2 - ((CONTENT_BOUNDS.left + CONTENT_BOUNDS.right) / 2) * transform.scale;
-    transform.y = height / 2 - ((CONTENT_BOUNDS.top + CONTENT_BOUNDS.bottom) / 2) * transform.scale;
+    transform.x = width / 2 - ((contentBounds.right - contentBounds.left) / 2) * transform.scale;
+    transform.y = height / 2 - ((contentBounds.bottom - contentBounds.top) / 2) * transform.scale;
   }
 
   function constrainPan() {
@@ -701,12 +619,12 @@
     const height = els.mapViewport.clientHeight;
     if (!width || !height) return;
     const margin = width < 700 ? 18 : 28;
-    const contentWidth = (CONTENT_BOUNDS.right - CONTENT_BOUNDS.left) * transform.scale;
-    const contentHeight = (CONTENT_BOUNDS.bottom - CONTENT_BOUNDS.top) * transform.scale;
-    if (contentWidth <= width - margin * 2) transform.x = (width - contentWidth) / 2 - CONTENT_BOUNDS.left * transform.scale;
-    else transform.x = clamp(transform.x, width - margin - CONTENT_BOUNDS.right * transform.scale, margin - CONTENT_BOUNDS.left * transform.scale);
-    if (contentHeight <= height - margin * 2) transform.y = (height - contentHeight) / 2 - CONTENT_BOUNDS.top * transform.scale;
-    else transform.y = clamp(transform.y, height - margin - CONTENT_BOUNDS.bottom * transform.scale, margin - CONTENT_BOUNDS.top * transform.scale);
+    const contentWidth = (contentBounds.right - contentBounds.left) * transform.scale;
+    const contentHeight = (contentBounds.bottom - contentBounds.top) * transform.scale;
+    if (contentWidth <= width - margin * 2) transform.x = (width - contentWidth) / 2;
+    else transform.x = clamp(transform.x, width - margin - (contentBounds.right - contentBounds.left) * transform.scale, margin);
+    if (contentHeight <= height - margin * 2) transform.y = (height - contentHeight) / 2;
+    else transform.y = clamp(transform.y, height - margin - (contentBounds.bottom - contentBounds.top) * transform.scale, margin);
   }
 
   function fitMap() {
@@ -757,14 +675,14 @@
     const height = els.mapViewport.clientHeight;
     const nextScale = Math.max(transform.scale, Math.min(MAX_SCALE, Math.max(fitScale, .78)));
     transform.scale = nextScale;
-    transform.x = width / 2 - (pos.x + pos.width / 2) * nextScale;
-    transform.y = height / 2 - (pos.y + pos.height / 2) * nextScale;
+    transform.x = width / 2 - (pos.centerX - contentBounds.left) * nextScale;
+    transform.y = height / 2 - (pos.centerY - contentBounds.top) * nextScale;
     isFitView = false;
     applyTransform();
   }
 
   function onPointerDown(event) {
-    if (event.button !== 0 || event.target.closest('.seat')) return;
+    if (event.button !== 0 || event.target.closest('.seat, .stage-link')) return;
     pointerPositions.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointerPositions.size === 2) {
       const points = Array.from(pointerPositions.values());
@@ -1020,6 +938,8 @@
     runBlueprintChecks();
     drawStaticMap();
     drawSeats();
+    measureContent();
+    if (document.fonts) document.fonts.ready.then(() => { measureContent(); recalculateView(); });
     createColorOptions();
     bindEvents();
     loadAutoSave();
