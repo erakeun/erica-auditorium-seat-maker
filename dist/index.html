@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d2a43" />
+    <meta
+      name="description"
+      content="한양대학교 ERICA 컨퍼런스홀 중강당 3층 406석 행사 좌석 배정 도구"
+    />
+    <title>ERICA 컨퍼런스홀 3층 좌석배치 제작기</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#seat-map">좌석 배치로 바로가기</a>
+
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">E</div>
+        <div>
+          <p class="eyebrow">HANYANG ERICA · CONFERENCE HALL</p>
+          <h1>3층 좌석배치 제작기</h1>
+        </div>
+      </div>
+
+      <div class="event-fields" aria-label="행사 정보">
+        <label>
+          <span>행사명</span>
+          <input id="event-name" type="text" maxlength="80" placeholder="행사명을 입력하세요" autocomplete="off" />
+        </label>
+        <label>
+          <span>행사일</span>
+          <input id="event-date" type="date" />
+        </label>
+        <div id="save-status" class="save-status" role="status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span>브라우저에 저장됨</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="command-bar" aria-label="좌석 배치 도구">
+      <div class="search-wrap">
+        <label class="search-box" for="search-input">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" /></svg>
+          <input id="search-input" type="search" placeholder="이름·소속·좌석 ID 검색" autocomplete="off" />
+        </label>
+        <div id="search-results" class="search-results" hidden></div>
+      </div>
+
+      <div class="toolbar-group" aria-label="표시 설정">
+        <button id="show-seat-id" class="segmented is-active" type="button" aria-pressed="true">좌석번호</button>
+        <button id="show-assignee" class="segmented" type="button" aria-pressed="false">배정자 이름</button>
+      </div>
+
+      <div class="toolbar-group" aria-label="확대 및 축소">
+        <button id="zoom-out" class="icon-button" type="button" aria-label="축소" title="축소">−</button>
+        <output id="zoom-value" class="zoom-value">100%</output>
+        <button id="zoom-in" class="icon-button" type="button" aria-label="확대" title="확대">＋</button>
+        <button id="zoom-fit" class="text-button" type="button">전체 맞춤</button>
+      </div>
+
+      <div class="toolbar-group file-actions" aria-label="파일 및 출력">
+        <button id="export-button" class="text-button" type="button">JSON 저장</button>
+        <button id="import-button" class="text-button" type="button">JSON 불러오기</button>
+        <input id="import-file" type="file" accept="application/json,.json" hidden />
+        <button id="print-button" class="primary-button" type="button">인쇄 · PDF</button>
+        <button id="reset-button" class="danger-button" type="button">전체 초기화</button>
+      </div>
+    </section>
+
+    <section class="summary-strip" aria-label="좌석 현황">
+      <div class="summary-title">
+        <strong id="summary-event-name">행사명을 입력하세요</strong>
+        <span id="summary-event-date">행사일 미지정</span>
+      </div>
+      <dl class="stats">
+        <div><dt>전체</dt><dd id="count-total">406</dd></div>
+        <div class="assigned"><dt>배정 완료</dt><dd id="count-assigned">0</dd></div>
+        <div class="empty"><dt>빈 좌석</dt><dd id="count-empty">406</dd></div>
+        <div class="unavailable"><dt>사용 불가</dt><dd id="count-unavailable">0</dd></div>
+      </dl>
+      <p class="local-note">자동저장은 현재 브라우저에만 보관됩니다. 다른 PC로 옮길 때는 <b>JSON 저장</b>을 사용하세요.</p>
+    </section>
+
+    <section class="print-header" aria-hidden="true">
+      <div>
+        <p>한양대학교 ERICA 컨퍼런스홀 중강당</p>
+        <h1 id="print-event-name">3층 좌석 배치</h1>
+      </div>
+      <div class="print-meta">
+        <strong id="print-event-date">행사일 미지정</strong>
+        <span>총 406석 · 제작 기준 배치 · 실측 도면 아님</span>
+      </div>
+    </section>
+
+    <main class="workspace">
+      <section class="map-panel" aria-label="3층 좌석 배치">
+        <div id="map-viewport" class="map-viewport">
+          <div id="seat-map" class="seat-map" tabindex="0" aria-label="좌석 배치. 드래그하여 이동하고 휠로 확대 또는 축소할 수 있습니다.">
+            <svg id="seat-svg" viewBox="0 0 1600 1000" role="img" aria-labelledby="map-title map-description">
+              <title id="map-title">한양대학교 ERICA 컨퍼런스홀 중강당 3층 좌석 배치</title>
+              <desc id="map-description">화면 위쪽이 스크린과 무대이며 A열이 가장 가깝습니다. 다섯 구역에 총 406석이 있습니다.</desc>
+              <defs>
+                <filter id="stage-shadow" x="-20%" y="-50%" width="140%" height="200%">
+                  <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#102b40" flood-opacity=".12" />
+                </filter>
+              </defs>
+              <g id="map-static"></g>
+              <g id="map-seats"></g>
+            </svg>
+          </div>
+        </div>
+
+        <div class="map-footer">
+          <div class="legend" aria-label="좌석 상태 범례">
+            <span><i class="legend-seat empty"></i>빈 좌석</span>
+            <span><i class="legend-seat assigned"></i>배정 완료</span>
+            <span><i class="legend-seat unavailable"></i>사용 불가</span>
+            <span><i class="legend-seat selected"></i>선택 중</span>
+          </div>
+          <p>화면 방향 기준 · 위쪽이 무대 / 외측 약 45°는 도면 판독 기준 · 실측 도면 아님</p>
+        </div>
+      </section>
+
+      <aside id="editor-panel" class="editor-panel" aria-labelledby="editor-title" aria-hidden="true">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">선택 좌석</p>
+            <h2 id="editor-title">좌석을 선택하세요</h2>
+          </div>
+          <button id="close-editor" class="close-button" type="button" aria-label="편집 패널 닫기">×</button>
+        </div>
+
+        <form id="seat-form">
+          <fieldset>
+            <legend>좌석 상태</legend>
+            <div class="status-options">
+              <label><input type="radio" name="seat-status" value="empty" checked /><span>빈 좌석</span></label>
+              <label><input type="radio" name="seat-status" value="assigned" /><span>배정 완료</span></label>
+              <label><input type="radio" name="seat-status" value="unavailable" /><span>사용 불가</span></label>
+            </div>
+          </fieldset>
+
+          <label class="form-field">
+            <span>이름</span>
+            <input id="person-name" type="text" maxlength="40" autocomplete="off" />
+          </label>
+          <label class="form-field">
+            <span>소속 · 직함</span>
+            <input id="person-org" type="text" maxlength="80" autocomplete="off" />
+          </label>
+          <label class="form-field">
+            <span>메모</span>
+            <textarea id="person-note" rows="3" maxlength="240"></textarea>
+          </label>
+          <div class="form-field">
+            <span>표시 색상</span>
+            <div id="color-options" class="color-options" role="radiogroup" aria-label="표시 색상"></div>
+          </div>
+
+          <div class="panel-actions">
+            <button id="save-seat" class="primary-button" type="submit">좌석 정보 저장</button>
+            <button id="clear-seat" class="text-button" type="button">배정 해제</button>
+          </div>
+        </form>
+
+        <p class="id-note">좌석 ID는 이 도구의 관리번호이며 현장의 공식 좌석번호가 아닙니다.</p>
+      </aside>
+      <button id="panel-scrim" class="panel-scrim" type="button" aria-label="편집 패널 닫기" tabindex="-1"></button>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="seat-data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
