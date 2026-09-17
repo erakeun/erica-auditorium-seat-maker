@@ -101,7 +101,7 @@
     </section>
 
     <section class="group-toolbar" aria-label="구역 지정 도구">
-      <button id="mode-move" type="button" aria-pressed="true">이동</button><button id="mode-select" type="button" aria-pressed="false">구역 선택</button>
+      <button id="mode-move" type="button" aria-pressed="true">이동</button><button id="mode-select" type="button" aria-pressed="false">드래그 선택 · 색칠</button>
       <button id="show-groups" type="button" aria-pressed="false">그룹 보기</button><button id="undo-change" type="button" disabled>실행 취소</button>
       <span id="selection-count" aria-live="polite">선택 0석</span><span id="held-summary">비워두기 0 · 배치 가능 406</span>
       <label>출력 <select id="print-content"><option value="name">개인 배정용</option><option value="group">그룹 안내용 (이름 제외)</option></select></label>
@@ -190,6 +190,9 @@
         <div class="button-row"><button id="select-replace" aria-pressed="true">새 선택</button><button id="select-add" aria-pressed="false">추가</button><button id="select-subtract" aria-pressed="false">빼기</button><button id="clear-selection">전체 선택 해제</button></div>
         <div class="group-range"><label>구역<select id="select-zone"><option value="all">전체</option><option>L1</option><option>L2</option><option>C</option><option>R2</option><option>R1</option></select></label><label>시작열<select id="select-row-start"></select></label><label>끝열<select id="select-row-end"></select></label></div>
         <button id="select-range">구역·행 선택</button>
+        <hr><label>선택 좌석 색상<input id="bulk-seat-color" type="color" value="#169873"></label>
+        <div class="button-row"><button id="apply-seat-color">선택 좌석에 색상 적용</button><button id="clear-seat-color">선택 좌석 색상 지우기</button></div>
+        <p class="help-text">드래그로 좌석을 선택한 뒤 색상을 적용하세요. 이름·그룹·고정·배정 상태는 바뀌지 않습니다. 그룹 보기에서는 그룹 색, 비워두기·사용 불가는 상태 표시가 우선합니다. 색칠은 좌석번호/이름 보기 및 개인 배정용 출력에 표시됩니다.</p>
         <hr><label>대상 그룹<select id="group-target"><option value="">새 그룹</option></select></label>
         <label>그룹 이름<input id="group-name" maxlength="60" placeholder="직접 입력하세요"></label><label>색상<input id="group-color" type="color" value="#0d5c8f"></label>
         <div class="button-row"><button id="assign-group">선택 좌석 지정 / 추가</button><button id="remove-group">선택 좌석 그룹 해제</button></div>
