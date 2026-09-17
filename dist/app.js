@@ -94,30 +94,49 @@
   }
 
   function drawStaticMap() {
-    const stage = svgNode('a', {
-      class: 'stage stage-link',
+    const room = layout.roomGeometry();
+    const roomLayer = svgNode('g', { class: 'room-layer', 'aria-label': '도면을 참고한 강당 내부 벽 윤곽 · 실측 아님' });
+    roomLayer.append(svgNode('path', { class: 'room-floor', d: room.floorPath }));
+    room.wallPaths.forEach((d) => roomLayer.append(svgNode('path', { class: 'room-wall', d })));
+    els.mapStatic.append(roomLayer);
+    const stage = svgNode('g', { class: 'stage' });
+    stage.append(
+      svgNode('path', { class: 'stage-floor', d: 'M 580 75 H 1220 L 1290 220 H 510 Z' }),
+      svgNode('text', { class: 'stage-title', x: 900, y: 179 }, '무대'),
+      svgNode('text', { class: 'stage-subtitle', x: 900, y: 202 }, 'STAGE'),
+      svgNode('path', { class: 'stage-front', d: 'M 510 220 H 1290' })
+    );
+    const banner = svgNode('a', {
+      id: 'banner-link', class: 'stage-link', tabindex: '0',
       href: 'https://erakeun.github.io/conference-hall-led-maker/',
       target: '_blank',
       rel: 'noopener noreferrer',
-      'aria-label': '중강당 LED 현수막 제작기 열기'
+      'aria-label': '컨퍼런스홀 LED 현수막 제작기 · 새 탭에서 열기'
     });
-    stage.append(
-      svgNode('path', { class: 'stage-floor', d: 'M 580 75 H 1220 L 1290 220 H 510 Z' }),
-      svgNode('text', { class: 'stage-title', x: 900, y: 152 }, '무대'),
-      svgNode('text', { class: 'stage-subtitle', x: 900, y: 178 }, 'STAGE'),
-      svgNode('path', { class: 'stage-front', d: 'M 510 220 H 1290' }),
+    banner.append(
       svgNode('rect', { class: 'screen-panel', x: 610, y: 24, width: 580, height: 34, rx: 4 }),
-      svgNode('text', { class: 'screen-label', x: 900, y: 47 }, '스크린 · 현수막 제작기 ↗')
+      svgNode('text', { class: 'screen-label', x: 900, y: 47 }, '현수막'),
+      svgNode('text', { class: 'link-hint', x: 900, y: 12 }, '클릭하여 현수막 만들기 ↗ · 새 탭')
     );
-    els.mapStatic.append(stage);
+    const led = svgNode('g', {
+      id: 'led-trigger', class: 'stage-link', tabindex: '0', role: 'button',
+      'aria-label': 'LED 화면 제작 메뉴', 'aria-haspopup': 'menu',
+      'aria-expanded': 'false', 'aria-controls': 'led-menu'
+    });
+    led.append(
+      svgNode('rect', { class: 'screen-panel led-panel', x: 755, y: 84, width: 290, height: 55, rx: 3 }),
+      svgNode('text', { class: 'screen-label', x: 900, y: 109 }, 'LED 화면'),
+      svgNode('text', { class: 'link-hint led-hint', x: 900, y: 128 }, '클릭하여 만들기 ▾')
+    );
+    els.mapStatic.append(stage, banner, led);
     els.mapStatic.append(svgNode('text', { class: 'orientation-note', x: 900, y: 298 }, '무대 앞 여유 공간 · 화면 위쪽이 무대'));
 
     const labels = [
-      { x: 178, y: 975, id: 'L1', name: '왼쪽 외측', count: 60 },
+      { x: 215, y: 975, id: 'L1', name: '왼쪽 외측', count: 60 },
       { x: 555, y: 356, id: 'L2', name: '왼쪽 내측', count: 82 },
       { x: 900, y: 356, id: 'C', name: '중앙', count: 126 },
       { x: 1245, y: 356, id: 'R2', name: '오른쪽 내측', count: 79 },
-      { x: 1622, y: 975, id: 'R1', name: '오른쪽 외측', count: 59 }
+      { x: 1585, y: 975, id: 'R1', name: '오른쪽 외측', count: 59 }
     ];
     labels.forEach((label) => {
       els.mapStatic.append(

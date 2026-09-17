@@ -12,6 +12,26 @@
   const centerX = 900;
   const aisleCenters = [680, 1120];
   const doorY = 1260;
+  // Left-hand 3F plan, rotated clockwise: short stage-back wall, front
+  // diagonals, long side walls, rear chamfers and rear wall. Adapted to the
+  // existing 406-seat schematic (not a scaled CAD tracing or measured sizes).
+  const roomBoundary = [
+    { x: 500, y: -240 }, { x: 1300, y: -240 },
+    { x: 1860, y: 150 }, { x: 1860, y: 850 },
+    { x: 1300, y: doorY }, { x: 500, y: doorY },
+    { x: -60, y: 850 }, { x: -60, y: 150 }
+  ];
+  const doorHalfWidth = 28;
+  function roomGeometry() {
+    const path = (points) => points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+    const gaps = aisleCenters.map((x) => ({ left: x - doorHalfWidth, right: x + doorHalfWidth, y: doorY }));
+    // Two OPEN polylines. No rear-wall segment exists across either doorway.
+    const wallPaths = [
+      path([{ x: gaps[0].left, y: doorY }, roomBoundary[5], roomBoundary[6], roomBoundary[7], ...roomBoundary.slice(0, 5), { x: gaps[1].right, y: doorY }]),
+      path([{ x: gaps[0].right, y: doorY }, { x: gaps[1].left, y: doorY }])
+    ];
+    return { floorPath: `${path(roomBoundary)} Z`, wallPaths, gaps };
+  }
   const rowY = (index) => 403 + index * 56;
   const rowWidth = (count) => count * width + (count - 1) * (pitch - width);
   function innerRowEdges(zoneId, count) {
@@ -67,5 +87,5 @@
     }
     return { points, labelX: points[0].x, labelY: points[0].y - 15, d: points.map((p, i) => `${i ? 'L' : 'M'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ') };
   }
-  return { width, height, centerX, aisleCenters, doorY, rowY, seatPosition, corners, outerAisleGeometry };
+  return { width, height, centerX, aisleCenters, doorY, rowY, seatPosition, corners, outerAisleGeometry, roomBoundary, roomGeometry };
 });
