@@ -179,6 +179,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .seat-map svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
 .stage-floor { fill: #f0f4f6; stroke: #9aaebc; stroke-width: 2; }
+.room-layer { pointer-events: none; }
+.room-floor { fill: #f9faf9; stroke: none; }
+.room-wall { fill: none; stroke: #536d7e; stroke-width: 6; stroke-linejoin: miter; stroke-linecap: butt; }
+.link-hint { fill: #536d7e; font-size: 11px; text-anchor: middle; }
+.led-hint { fill: #cedee9; font-size: 10px; }
+.led-menu { position: fixed; z-index: 100; width: 248px; padding: 6px; border: 1px solid #8fa6b6; border-radius: 10px; background: white; }
+.led-menu[hidden] { display: none; }
+.led-menu a { display: flex; justify-content: space-between; align-items: center; min-height: 48px; padding: 8px 12px; border-radius: 6px; color: #173b55; text-decoration: none; font-size: 14px; font-weight: 700; }
+.led-menu a span { color: #657d8c; font-size: 11px; }
+.led-menu a:hover, .led-menu a:focus-visible { background: #e6f1f7; outline: 2px solid #13739b; }
 .stage-front { fill: none; stroke: #577789; stroke-width: 4; }
 .screen-panel { fill: #0d2a43; }
 .screen-label { fill: white; font-size: 17px; font-weight: 750; text-anchor: middle; }
@@ -379,6 +389,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 @page { size: A3 landscape; margin: 8mm; }
 
 @media print {
+  .led-menu, .link-hint { display: none !important; }
   html, body { width: 100%; height: auto; background: white; color: #102b40; }
   body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .app-header, .command-bar, .summary-strip, .editor-panel, .panel-scrim, .map-footer, .toast, .roster-dialog { display: none !important; }

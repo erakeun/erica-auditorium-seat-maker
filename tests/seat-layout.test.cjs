@@ -72,3 +72,43 @@ const lastSeatBottom = Math.max(...polygons.flat().map((p) => p.y));
 assert(layout.doorY - 29.5 - lastSeatBottom >= 60);
 assert(placed.every(({pos}) => pos.y > 58));
 console.log(`공간 검증: 406석 겹침 0, 좌석 외곽 최소 간격 ${closestSeats.toFixed(1)}, 중앙 통로 폭 104, 외측 통로 중심 최소 여유 ${aisleClearance.toFixed(1)}, 두 문 앞 여유 ${(layout.doorY-29.5-lastSeatBottom).toFixed(1)} (화면 좌표)`);
+
+// Check the real rotated seat corners, not just unrotated bounding boxes.
+const boundary = layout.roomBoundary;
+function insideRoom(point) {
+  return boundary.every((a, i) => {
+    const b = boundary[(i + 1) % boundary.length];
+    return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x) > 0;
+  });
+}
+let wallClearance = Infinity;
+polygons.forEach((polygon, index) => polygon.forEach((point) => {
+  assert(insideRoom(point), `${placed[index].seat.id} crosses the room boundary`);
+  boundary.forEach((a, i) => { wallClearance = Math.min(wallClearance, pointDistance(point, a, boundary[(i + 1) % boundary.length])); });
+}));
+assert(wallClearance >= 35, `wall is too close: ${wallClearance}`);
+// All four stage-floor corners and both sides of each corridor stay inside.
+[[580,75],[1220,75],[1290,220],[510,220]].forEach(([x,y]) => assert(insideRoom({x,y})));
+for (const x of layout.aisleCenters) for (const y of [403,1165,1216]) {
+  assert(insideRoom({x:x-50,y})); assert(insideRoom({x:x+50,y}));
+}
+const room = layout.roomGeometry();
+assert.equal(room.gaps.length, 2);
+assert.deepEqual(room.gaps.map((gap) => (gap.left + gap.right) / 2), layout.aisleCenters);
+assert(room.gaps.every((gap) => gap.right-gap.left === 56 && gap.y === layout.doorY));
+const wallSegments = room.wallPaths.flatMap((d) => {
+  assert(!d.includes('Z'), 'wall must not close across the doors');
+  const coordinates = [...d.matchAll(/[ML] (-?[\d.]+) (-?[\d.]+)/g)].map((match) => ({x:Number(match[1]),y:Number(match[2])}));
+  return coordinates.slice(1).map((point,i) => [coordinates[i],point]);
+});
+room.gaps.forEach((gap) => {
+  for (let x = gap.left+1; x < gap.right; x++) {
+    assert(wallSegments.every(([a,b]) => pointDistance({x,y:gap.y},a,b) > .5), 'a wall blocks a doorway');
+  }
+  for (const x of [gap.left,gap.right]) assert(wallSegments.some((segment) => segment.some((p) => p.x === x && p.y === gap.y)), 'door jamb must meet wall endpoint');
+});
+const app = fs.readFileSync('dist/app.js','utf8');
+assert(!app.includes("const stage = svgNode('a'"), 'stage floor must not be a link');
+const links = fs.readFileSync('dist/stage-links.js','utf8');
+assert(!/localStorage|assignments|participants|URLSearchParams/.test(links), 'external links must not access assignment data');
+console.log(`벽 검증: 회전 좌석 406석·무대 내부 포함, 벽과 좌석 최소 여유 ${wallClearance.toFixed(1)}, 후면 개구부 정확히 2곳, 문틀·벽 끝점 일치 (화면 좌표)`);

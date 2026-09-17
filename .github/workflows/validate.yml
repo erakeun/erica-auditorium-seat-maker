@@ -19,6 +19,7 @@ jobs:
           node --check dist/seat-data.js
           node --check dist/app.js
           node --check dist/seat-layout.js
+          node --check dist/stage-links.js
           node --check dist/roster-engine.js
           node --check dist/roster-ui.js
       - name: 406석 데이터 검사
