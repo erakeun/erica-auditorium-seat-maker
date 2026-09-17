@@ -1,0 +1,40 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const groups=require('../dist/group-engine.js'),engine=require('../dist/roster-engine.js'),layout=require('../dist/seat-layout.js');
+const context={window:{}};vm.runInNewContext(fs.readFileSync('dist/seat-data.js','utf8'),context);const blueprint=JSON.parse(JSON.stringify(context.window.SEAT_BLUEPRINT));
+const base=()=>({schema:'erica-conference-hall-3f-seating',version:3,event:{name:'검증 전용',date:''},assignments:{},participants:[],groups:[],seatGroups:{},heldSeats:{},groupLinks:[],layoutSettings:{}});
+let state=base();
+const names=['선생님','몽골·말레이시아 학생','중국 학생','유럽권 학생','운영 학생'];
+['L1','L2','C','R2','R1'].forEach((zone,i)=>{state=groups.plan(state,blueprint.seats.filter(s=>s.zoneId===zone).map(s=>s.id),{type:'assign',groupId:`G-${i}`,name:names[i],color:engine.COLORS[i]}).next;state.groupLinks.push({source:zone,target:`G-${i}`});});
+const a=blueprint.seats.filter(s=>s.zoneId==='C'&&s.row==='A').map(s=>s.id);
+state=groups.plan(state,a,{type:'hold'}).next;
+assert.equal(blueprint.total,406);assert.deepEqual(state.groups.map(g=>groups.stats(state,blueprint,g.id).capacity),[60,82,117,79,59]);assert.equal(groups.stats(state,blueprint).capacity,397);assert.equal(groups.stats(state,blueprint).held,9);assert.equal(Object.keys(state.assignments).length,0);
+assert.deepEqual(groups.normalize(JSON.parse(JSON.stringify(state)),blueprint),{groups:state.groups,seatGroups:state.seatGroups,heldSeats:state.heldSeats,groupLinks:state.groupLinks});
+assert.deepEqual(groups.normalize({assignments:{}},blueprint),{groups:[],seatGroups:{},heldSeats:{},groupLinks:[]});
+assert.throws(()=>groups.normalize({...state,seatGroups:{'C-A-01':'unknown'}},blueprint));
+assert.throws(()=>groups.normalize({...state,heldSeats:{'C-Z-01':true}},blueprint));
+assert.throws(()=>groups.normalize({...state,assignments:{'C-A-01':{status:'assigned'}}},blueprint));
+const make=(i,group,mode='class')=>engine.participant({name:`검증${i}`,group},i,mode,()=>`P-${group}-${i}`);
+const people=Array.from({length:120},(_,i)=>make(i,'C')).concat([make(0,'no-link')]);
+const options={scope:'all',groupOnly:true,classPattern:'random'};
+for(let n=0;n<10;n++){
+ const preview=engine.buildPreview({blueprint,participants:people,assignments:state.assignments,groupState:state,mode:'class',options});
+ assert.equal(preview.mappings.length,117);assert.equal(preview.unassigned.length,4);
+ preview.mappings.forEach(m=>{assert.equal(state.seatGroups[m.seatId],'G-2');assert(!state.heldSeats[m.seatId]);});
+}
+const vip={...make(1,'C','event'),priority:1};
+const conflict=engine.buildPreview({blueprint,participants:[vip],assignments:{},groupState:state,mode:'event',options:{groupOnly:true}});
+assert.equal(conflict.unassigned.length,1);assert(conflict.conflicts.some(c=>c.message.includes('C-A-05')));assert(!conflict.assignments['C-A-05']);
+const alternate=engine.buildPreview({blueprint,participants:[{...vip,requestedSeat:'C-B-05'}],assignments:{},groupState:state,mode:'event',options:{groupOnly:true}});assert.equal(alternate.assignments['C-B-05'].participantId,vip.id);
+const normal=engine.buildPreview({blueprint,participants:[make(1,'no-link')],assignments:{},groupState:state,mode:'class',options:{}});assert.equal(normal.unassigned.length,1);
+const override=engine.buildPreview({blueprint,participants:[make(1,'no-link')],assignments:{},groupState:state,mode:'class',options:{ignoreGroups:true}});assert.equal(override.mappings.length,1);assert(!state.heldSeats[override.mappings[0].seatId]);
+state.groupLinks.push({source:'말레이시아',target:'G-1'});assert.equal(groups.targetFor(state,{group:'말레이시아'}),'G-1');
+const shared=engine.buildPreview({blueprint,participants:[make(1,'L2'),make(2,'말레이시아')],assignments:{},groupState:state,mode:'class',options});assert.equal(shared.mappings.length,2);assert(shared.mappings.every(m=>state.seatGroups[m.seatId]==='G-1'));
+const split=groups.plan(state,['L2-A-01','L2-N-03','L1-I-01'],{type:'assign',groupId:'G-split',name:'떨어진 그룹',color:'#123456'});assert.equal(split.moved.length,3);assert.equal(groups.stats(split.next,blueprint,'G-split').total,3);
+let assigned=groups.clone(state);assigned.assignments['L2-A-01']={status:'assigned',name:'검증',participantId:'P-test',fixed:false};assigned.participants=[{id:'P-test',name:'검증'}];
+const hold=groups.plan(assigned,['L2-A-01'],{type:'hold'});assert.equal(hold.affected.length,1);assert(!hold.next.assignments['L2-A-01']);assert.equal(hold.next.participants.length,1);assert.equal(hold.next.seatGroups['L2-A-01'],'G-1');assert(!assigned.heldSeats['L2-A-01']); // snapshot untouched, undo restores atomically
+assigned.assignments['L2-A-01'].fixed=true;const locked=groups.plan(assigned,['L2-A-01'],{type:'hold'});assert.deepEqual(locked.locked,['L2-A-01']);assert(locked.next.assignments['L2-A-01'].fixed);
+const manual=groups.clone(state);manual.assignments['L1-A-01']={status:'assigned',name:'가상수동',org:'수동 소속',note:'보존 메모',fixed:false};const manualHold=groups.plan(manual,['L1-A-01'],{type:'hold'});assert.equal(manualHold.next.participants[0].name,'가상수동');assert.equal(manualHold.next.participants[0].note,'보존 메모');assert.equal(manualHold.next.participants[0].group,'');assert.equal(manual.participants.length,0);
+const mismatch=engine.buildPreview({blueprint,participants:[{...make(1,'C'),id:'P-test'}],assignments:assigned.assignments,groupState:assigned,mode:'class',options:{scope:'all',groupOnly:true}});assert(mismatch.conflicts.some(c=>c.blocking));assert.equal(mismatch.assignments['L2-A-01'].participantId,'P-test');
+const dual=groups.clone(state);dual.assignments['C-A-01']={status:'unavailable'};const stats=groups.stats(dual,blueprint);assert.equal(stats.held,8);assert.equal(stats.unavailable,1);assert.equal(stats.capacity,397);assert.equal(stats.held+stats.unavailable+stats.assigned+stats.available,406);
+const outer=blueprint.seats.find(s=>s.id==='L1-A-01'),p=layout.seatPosition(outer,blueprint);assert.deepEqual(groups.selectedInRect(blueprint.seats,{x1:p.centerX-2,y1:p.centerY-2,x2:p.centerX+2,y2:p.centerY+2},s=>layout.seatPosition(s,blueprint)),['L1-A-01']);
+console.log('그룹 검증: 406석/5그룹/9석 비워두기=397, C 117, 분할·비연속, 랜덤 경계·초과·VIP·고정, JSON 호환·불변 스냅샷, 45° 중심 선택 통과');
