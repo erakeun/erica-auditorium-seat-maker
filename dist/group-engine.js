@@ -37,7 +37,20 @@
       if (!link || typeof link.source !== 'string' || link.source.length > 60 || sources.has(link.source) || !ids.has(link.target)) throw new Error('명단 그룹 연결 대상/중복 오류');
       sources.add(link.source); return {source:link.source,target:link.target};
     });
-    return {groups:normalized,seatGroups,heldSeats,groupLinks};
+    const seatColors = data.seatColors === undefined ? {} : data.seatColors;
+    if (!seatColors || typeof seatColors !== 'object' || Array.isArray(seatColors)) throw new Error('좌석 색상 형식 오류');
+    Object.entries(seatColors).forEach(([id,color])=>{
+      if (!seats.has(id) || typeof color !== 'string' || !/^#[\da-f]{6}$/i.test(color)) throw new Error('좌석 색상 또는 좌석 ID 오류');
+    });
+    return {groups:normalized,seatGroups,heldSeats,groupLinks,seatColors:{...seatColors}};
+  }
+  function paint(state, ids, color, blueprint) {
+    const valid = new Set(blueprint.seats.map(s=>s.id));
+    if (color !== null && (typeof color !== 'string' || !/^#[\da-f]{6}$/i.test(color))) throw new Error('색상을 확인하세요.');
+    if (ids.some(id=>!valid.has(id))) throw new Error('알 수 없는 좌석입니다.');
+    const next=clone(state); next.seatColors ||= {};
+    ids.forEach(id=>{if(color===null)delete next.seatColors[id];else next.seatColors[id]=color;});
+    return next;
   }
   function targetFor(state, person) { return (state.groupLinks || []).find(link => link.source === (person?.group || ''))?.target || ''; }
   function allowed(state, person, seatId, options = {}) {
@@ -97,5 +110,5 @@
     const left=Math.min(rectangle.x1,rectangle.x2),right=Math.max(rectangle.x1,rectangle.x2),top=Math.min(rectangle.y1,rectangle.y2),bottom=Math.max(rectangle.y1,rectangle.y2);
     return seats.filter(s=>{ const p=position(s); return p.centerX>=left&&p.centerX<=right&&p.centerY>=top&&p.centerY<=bottom; }).map(s=>s.id);
   }
-  return {clone,normalize,targetFor,allowed,stats,plan,selectedInRect};
+  return {clone,normalize,targetFor,allowed,stats,plan,selectedInRect,paint};
 });

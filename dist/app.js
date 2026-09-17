@@ -87,7 +87,7 @@
       assignments: {},
       participants: [],
       layoutSettings: {},
-      groups: [], seatGroups: {}, heldSeats: {}, groupLinks: [],
+      groups: [], seatGroups: {}, heldSeats: {}, groupLinks: [], seatColors: {},
       updatedAt: new Date().toISOString()
     };
   }
@@ -469,7 +469,7 @@
   }
 
   function hasContent() {
-    return Boolean(state.event.name || state.event.date || Object.keys(state.assignments).length || state.participants.length || state.groups.length || Object.keys(state.heldSeats).length);
+    return Boolean(state.event.name || state.event.date || Object.keys(state.assignments).length || state.participants.length || state.groups.length || Object.keys(state.heldSeats).length || Object.keys(state.seatColors || {}).length);
   }
 
   function setSaveStatus(saving) {
@@ -531,7 +531,7 @@
     try {
       const raw = await file.text();
       const candidate = validateImportedData(JSON.parse(raw));
-      if (hasContent() && !window.confirm('현재 행사·명단·개인 배정·그룹·비워두기를 불러온 파일로 덮어쓸까요?')) return;
+      if (hasContent() && !window.confirm('현재 행사·명단·개인 배정·그룹·비워두기·좌석 색상을 불러온 파일로 덮어쓸까요?')) return;
       state = candidate;
       selectedSeatId = null;
       syncEventFields();
@@ -547,7 +547,7 @@
   }
 
   function resetAll() {
-    if (hasContent() && !window.confirm('행사 정보, 참가자 명단, 개인 배정, 그룹과 비워두기를 모두 초기화할까요?')) return;
+    if (hasContent() && !window.confirm('행사 정보, 참가자 명단, 개인 배정, 그룹, 비워두기와 좌석 색상을 모두 초기화할까요?')) return;
     state = createEmptyState();
     selectedSeatId = null;
     syncEventFields();

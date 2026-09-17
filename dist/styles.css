@@ -413,7 +413,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .group-legend-item span { font-size:11px; }
 .selection-box { fill:#1e8ebc22; stroke:#12769d; stroke-width:2; stroke-dasharray:8 5; pointer-events:none; }
 .selecting { cursor:crosshair; }
+.seat.has-seat-color rect { fill:var(--custom-seat-color); }
+.seat.has-seat-color > text:not(.seat-state-marker) { fill:white; paint-order:stroke; stroke:#19384b; stroke-width:1px; }
 .group-view .seat.has-group rect { fill:var(--group-color); stroke:#35566b; }
+.custom-color-view .seat.has-seat-color rect { fill:var(--custom-seat-color); }
 .group-view .seat.has-group > text:not(.seat-state-marker) { fill:white; paint-order:stroke; stroke:#19384b; stroke-width:1px; }
 .seat.is-held rect { fill:url(#held-pattern) !important; stroke:#a97917 !important; }
 .seat.status-unavailable rect { fill:#7b8994 !important; }

@@ -21,6 +21,7 @@
   function paintSelection() {
     document.querySelectorAll('.seat').forEach(e=>e.classList.toggle('is-multi-selected',selected.has(e.dataset.seatId)));
     $('selection-count').textContent=`선택 ${selected.size}석`;
+    $('apply-seat-color').disabled=!selected.size;$('clear-seat-color').disabled=!selected.size;
   }
   function toMap(event) { const p=new DOMPoint(event.clientX,event.clientY);return p.matrixTransform(svg.getScreenCTM().inverse()); }
   // Capture all selection gestures before pan handlers or SVG links can run.
@@ -78,12 +79,14 @@
   function render() {
     const state=app.getState(), groupView=app.getLabelMode()==='group' || (app.isPrinting() && state.groups.length>0);
     svg.classList.toggle('group-view',groupView);$('show-groups').setAttribute('aria-pressed',groupView);
+    svg.classList.toggle('custom-color-view',app.getLabelMode()!=='group');
     $('undo-change').disabled=!app.canUndo();
     const total=engine.stats(state,app.blueprint);$('held-summary').textContent=`비워두기 ${total.held} · 배치 가능 ${total.capacity} (추가 ${total.available})`;
     const old=$('group-target').value; $('group-target').replaceChildren(new Option('새 그룹','')); state.groups.forEach(g=>$('group-target').add(new Option(g.name,g.id)));$('group-target').value=state.groups.some(g=>g.id===old)?old:'';
     document.querySelectorAll('.seat').forEach(e=>{
       const id=e.dataset.seatId,r=app.getRecord(id),g=state.groups.find(g=>g.id===state.seatGroups[id]),held=!!state.heldSeats[id];
       e.classList.toggle('has-group',!!g);e.classList.toggle('is-held',held);e.style.setProperty('--group-color',g?.color||'#dae4e9');
+      e.classList.toggle('has-seat-color',!!state.seatColors?.[id]);e.style.setProperty('--custom-seat-color',state.seatColors?.[id]||'#dae4e9');
       let badge=e.querySelector('.seat-state-marker');if(!badge){const p=app.seatPosition(app.blueprint.seats.find(s=>s.id===id));badge=make('text',{class:'seat-state-marker',x:p.centerX+8,y:p.centerY-7});e.append(badge);}
       badge.textContent=r.status==='unavailable'?'×':held?'비':r.fixed?'◆':r.status==='assigned'?'●':'';
       e.setAttribute('aria-label',`${id}, ${g?g.name+', ':''}${r.status==='assigned'?'배정 완료, '+r.name:r.status==='unavailable'?'사용 불가':held?'비워두기':'빈 좌석'}${r.fixed?', 고정':''}`);
@@ -110,6 +113,13 @@
   $('mode-move').onclick=()=>mode(false);$('mode-select').onclick=()=>mode(true);$('show-groups').onclick=()=>{app.setLabelMode('group');$('print-content').value='group';};$('undo-change').onclick=()=>app.undo();
   ['replace','add','subtract'].forEach(op=>$('select-'+op).onclick=()=>{operation=op;['replace','add','subtract'].forEach(v=>$('select-'+v).setAttribute('aria-pressed',v===op));});
   $('clear-selection').onclick=()=>{selected.clear();paintSelection();};
+  function paintSeats(clear) {
+    if(!selected.size){app.showToast('드래그하거나 탭하여 좌석을 선택하세요.');return;}
+    app.setState(engine.paint(app.getState(),[...selected],clear?null:$('bulk-seat-color').value,app.blueprint),`${selected.size}석의 색상을 ${clear?'지웠':'적용했'}습니다. 배정과 그룹은 유지됩니다.`);
+    if(app.getLabelMode()==='group')app.setLabelMode('id');
+    $('print-content').value='name';
+  }
+  $('apply-seat-color').onclick=()=>paintSeats(false);$('clear-seat-color').onclick=()=>paintSeats(true);
   $('select-range').onclick=()=>{const z=$('select-zone').value,a=$('select-row-start').value,b=$('select-row-end').value;if(a>b){app.showToast('시작열이 끝열보다 뒤입니다.');return;}choose(app.blueprint.seats.filter(s=>(z==='all'||s.zoneId===z)&&s.row>=a&&s.row<=b).map(s=>s.id));};
   $('group-target').onchange=groupFields;
   $('assign-group').onclick=()=>change('assign');$('remove-group').onclick=()=>change('remove');$('hold-seats').onclick=()=>change('hold');$('unhold-seats').onclick=()=>change('unhold');
