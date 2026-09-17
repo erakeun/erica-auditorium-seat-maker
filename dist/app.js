@@ -31,6 +31,11 @@
   let fitScale = .28;
   let isFitView = true;
   let restoreLabelMode = null;
+  let printing = false;
+  const undoHistory = [];
+  let historyLast = null;
+  let revision = 0;
+  let undoing = false;
 
   const els = {
     eventName: document.getElementById('event-name'),
@@ -77,11 +82,12 @@
   function createEmptyState() {
     return {
       schema: SCHEMA,
-      version: 2,
+      version: 3,
       event: { name: '', date: '' },
       assignments: {},
       participants: [],
       layoutSettings: {},
+      groups: [], seatGroups: {}, heldSeats: {}, groupLinks: [],
       updatedAt: new Date().toISOString()
     };
   }
@@ -140,7 +146,7 @@
     ];
     labels.forEach((label) => {
       els.mapStatic.append(
-        svgNode('text', { class: 'zone-label', x: label.x, y: label.y }, `${label.id} · ${label.name}`),
+        svgNode('text', { class: 'zone-label', 'data-zone-id':label.id, x: label.x, y: label.y, tabindex: '0', role:'button', 'aria-label':`${label.id} 구역 전체 선택` }, `${label.id} · ${label.name}`),
         svgNode('text', { class: 'zone-count', x: label.x, y: label.y + 19 }, `${label.count}석`)
       );
     });
@@ -247,7 +253,7 @@
   }
 
   function validateImportedData(data) {
-    if (!data || typeof data !== 'object' || data.schema !== SCHEMA || ![1, 2].includes(data.version)) {
+    if (!data || typeof data !== 'object' || data.schema !== SCHEMA || ![1, 2, 3].includes(data.version)) {
       throw new Error('이 도구에서 저장한 JSON 파일이 아닙니다.');
     }
     if (!data.event || typeof data.event !== 'object' || !data.assignments || typeof data.assignments !== 'object' || Array.isArray(data.assignments)) {
@@ -273,6 +279,7 @@
       next.layoutSettings = data.layoutSettings && typeof data.layoutSettings === 'object' ? { ...data.layoutSettings } : {};
     }
     next.updatedAt = typeof data.updatedAt === 'string' ? data.updatedAt : new Date().toISOString();
+    Object.assign(next, window.GROUP_ENGINE.normalize(data,blueprint));
     return next;
   }
 
@@ -308,6 +315,7 @@
     blueprint.seats.forEach((seat) => renderSeat(seat.id));
     renderSummary();
     updateEventText();
+    window.GROUP_UI?.render();
   }
 
   function renderSummary() {
@@ -320,7 +328,7 @@
     });
     els.countAssigned.textContent = String(assigned);
     els.countUnavailable.textContent = String(unavailable);
-    els.countEmpty.textContent = String(blueprint.total - assigned - unavailable);
+    els.countEmpty.textContent = String(window.GROUP_ENGINE.stats(state,blueprint).available);
   }
 
   function formatDate(value) {
@@ -340,6 +348,7 @@
   }
 
   function selectSeat(id, options) {
+    if (window.GROUP_UI?.isSelecting()) { window.GROUP_UI.toggle(id); return; }
     if (!seatById.has(id)) return;
     const previous = selectedSeatId;
     selectedSeatId = id;
@@ -438,6 +447,8 @@
       fixed: status === 'assigned' && els.seatFixed.checked
     });
     if (status === 'empty' && (record.name || record.org || record.note)) record.status = 'assigned';
+    if (record.status === 'assigned' && state.heldSeats[selectedSeatId]) { showToast('비워두기를 명시적으로 해제한 다음 개인 배정할 수 있습니다.'); return; }
+    if (record.status === 'assigned' && state.seatGroups[selectedSeatId] && !window.GROUP_ENGINE.allowed(state,state.participants.find(p=>p.id===record.participantId),selectedSeatId) && !window.confirm('그룹 전용 좌석입니다. 이 개인 배정을 예외로 저장할까요? 그룹 소속은 바뀌지 않습니다.')) return;
     if (record.status === 'empty') delete state.assignments[selectedSeatId];
     else state.assignments[selectedSeatId] = record;
     renderSeat(selectedSeatId);
@@ -458,7 +469,7 @@
   }
 
   function hasContent() {
-    return Boolean(state.event.name || state.event.date || Object.keys(state.assignments).length || state.participants.length);
+    return Boolean(state.event.name || state.event.date || Object.keys(state.assignments).length || state.participants.length || state.groups.length || Object.keys(state.heldSeats).length);
   }
 
   function setSaveStatus(saving) {
@@ -467,6 +478,14 @@
   }
 
   function queueSave() {
+    const snapshot = JSON.stringify({...state,updatedAt:''});
+    if (historyLast && snapshot !== historyLast && !undoing) {
+      undoHistory.push(historyLast);
+      if (undoHistory.length > 30) undoHistory.shift();
+    }
+    historyLast = snapshot;
+    revision++;
+    window.dispatchEvent(new Event('seating-change'));
     window.clearTimeout(saveTimer);
     setSaveStatus(true);
     saveTimer = window.setTimeout(() => {
@@ -487,8 +506,7 @@
     try {
       state = validateImportedData(JSON.parse(raw));
     } catch (error) {
-      localStorage.removeItem(STORAGE_KEY);
-      showToast('손상된 자동저장 데이터는 불러오지 않았습니다.');
+      showToast('자동저장 데이터를 읽지 못했습니다. 원본은 브라우저에 보존했습니다.');
     }
   }
 
@@ -513,7 +531,7 @@
     try {
       const raw = await file.text();
       const candidate = validateImportedData(JSON.parse(raw));
-      if (hasContent() && !window.confirm('현재 행사와 배정 내용을 불러온 파일로 덮어쓸까요?')) return;
+      if (hasContent() && !window.confirm('현재 행사·명단·개인 배정·그룹·비워두기를 불러온 파일로 덮어쓸까요?')) return;
       state = candidate;
       selectedSeatId = null;
       syncEventFields();
@@ -529,7 +547,7 @@
   }
 
   function resetAll() {
-    if (hasContent() && !window.confirm('행사 정보, 참가자 명단, 406석의 배정 내용을 모두 초기화할까요?')) return;
+    if (hasContent() && !window.confirm('행사 정보, 참가자 명단, 개인 배정, 그룹과 비워두기를 모두 초기화할까요?')) return;
     state = createEmptyState();
     selectedSeatId = null;
     syncEventFields();
@@ -601,6 +619,7 @@
     els.showSeatId.setAttribute('aria-pressed', String(mode === 'id'));
     els.showAssignee.setAttribute('aria-pressed', String(mode === 'name'));
     blueprint.seats.forEach((seat) => renderSeat(seat.id));
+    window.GROUP_UI?.render();
   }
 
   function clamp(value, min, max) {
@@ -701,6 +720,7 @@
   }
 
   function onPointerDown(event) {
+    if (window.GROUP_UI?.isSelecting()) return;
     if (event.button !== 0 || event.target.closest('.seat, .stage-link')) return;
     pointerPositions.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointerPositions.size === 2) {
@@ -810,11 +830,13 @@
     window.addEventListener('resize', recalculateView);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', recalculateView);
     window.addEventListener('beforeprint', () => {
+      printing = true;
       restoreLabelMode = labelMode;
-      setLabelMode('name');
+      setLabelMode(document.getElementById('print-content')?.value === 'group' ? 'group' : 'name');
       closeEditor();
     });
     window.addEventListener('afterprint', () => {
+      printing = false;
       if (restoreLabelMode) setLabelMode(restoreLabelMode);
       restoreLabelMode = null;
     });
@@ -865,8 +887,10 @@
           event: { name: state.event.name, date: state.event.date },
           total: blueprint.total,
           assigned,
-          empty: blueprint.total - assigned - unavailable,
-          unavailable
+          empty: window.GROUP_ENGINE.stats(state,blueprint).available,
+          unavailable,
+          held: window.GROUP_ENGINE.stats(state,blueprint).held,
+          capacity: window.GROUP_ENGINE.stats(state,blueprint).capacity
         };
       }
     });
@@ -908,6 +932,8 @@
         const updates = input.seats.map((item) => {
           if (!item || typeof item !== 'object' || !seatById.has(item.seatId)) throw new Error(`알 수 없는 좌석 ID: ${item && item.seatId ? item.seatId : ''}`);
           if (!['assigned', 'unavailable'].includes(item.status)) throw new Error(`지원하지 않는 좌석 상태: ${item.status}`);
+          if (item.status === 'assigned' && state.heldSeats[item.seatId]) throw new Error(`${item.seatId}: 비워두기를 먼저 해제하세요.`);
+          if (item.status === 'assigned' && state.seatGroups[item.seatId]) throw new Error(`${item.seatId}: 그룹 전용 좌석은 개인 편집에서 확인 후 배정하세요.`);
           return {
             id: item.seatId,
             record: normalizeRecord({
@@ -933,6 +959,23 @@
     colors: COLORS,
     getState: () => state,
     getRecord,
+    getRevision: () => revision,
+    getLabelMode: () => labelMode,
+    isPrinting: () => printing,
+    setLabelMode,
+    seatPosition,
+    refresh: renderAll,
+    updateBounds() { measureContent(); recalculateView(); },
+    setState(next,message) { state = validateImportedData(next); syncEventFields(); this.notifyStateChanged(message); },
+    canUndo: () => undoHistory.length > 0,
+    undo() {
+      if (!undoHistory.length) return;
+      undoing = true;
+      state = validateImportedData(JSON.parse(undoHistory.pop()));
+      selectedSeatId = null; closeEditor(); syncEventFields(); renderAll(); queueSave();
+      undoing = false;
+      showToast('그룹·비워두기·개인 배정을 함께 실행 취소했습니다.');
+    },
     selectSeat,
     validateImportedData,
     notifyStateChanged(message) {
@@ -943,6 +986,7 @@
     replaceAssignments(assignments, message) {
       const next = {};
       Object.entries(assignments || {}).forEach(([id, record]) => {
+        if (record.status === 'assigned' && state.heldSeats[id]) throw new Error(`${id}: 비워두기 좌석입니다.`);
         if (seatById.has(id)) next[id] = normalizeRecord(record);
       });
       state.assignments = next;
@@ -962,6 +1006,7 @@
     createColorOptions();
     bindEvents();
     loadAutoSave();
+    historyLast = JSON.stringify({...state,updatedAt:''});
     syncEventFields();
     renderAll();
     registerWebMcpTools();

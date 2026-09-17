@@ -388,7 +388,55 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 
 @page { size: A3 landscape; margin: 8mm; }
 
+.group-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 24px; background:#edf3f6; border-bottom:1px solid var(--line); flex-shrink:0; font-size:12px; }
+.group-toolbar button, .group-panel button, .group-confirm button { border:1px solid #b8c9d3; border-radius:6px; background:white; padding:8px 10px; color:#183f58; min-height:36px; }
+.group-toolbar [aria-pressed="true"], .group-panel [aria-pressed="true"] { background:#175b80; color:white; }
+.group-toolbar label { margin-left:auto; }
+.group-toolbar select { padding:5px; }
+.group-panel { position:absolute; right:0; top:0; bottom:0; width:330px; z-index:22; background:#fff; border-left:1px solid #b8c9d3; padding:16px; overflow:auto; }
+.group-panel[hidden], .group-legend[hidden] { display:none; }
+.group-panel h2 { font-size:18px; margin:0 0 12px; }
+.group-panel label { display:block; font-size:12px; margin-block:8px; }
+.group-panel input:not([type="color"]), .group-panel select { width:100%; padding:8px; border:1px solid #b8c9d3; border-radius:5px; }
+.group-panel input[type="color"] { width:100%; height:32px; border:0; }
+.group-range { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+.group-panel .button-row { flex-wrap:wrap; gap:6px; }
+.group-panel hr { border:0; border-top:1px solid #dce5eb; margin:16px 0; }
+.workspace:has(.group-panel:not([hidden])) { padding-right:330px; }
+.group-confirm { border:1px solid #94abba; border-radius:12px; width:min(620px,94vw); max-height:85dvh; padding:24px; color:#17394f; }
+.group-confirm::backdrop { background:#102d4855; }
+#group-impact { max-height:55dvh; overflow:auto; overflow-wrap:anywhere; }
+.group-legend { display:flex; flex-wrap:wrap; gap:6px; max-height:110px; overflow:auto; padding:8px 16px; background:#f6f9fb; }
+.group-legend-item { display:grid; grid-template-columns:12px 1fr; gap:3px 8px; padding:6px 9px; border:1px solid #c6d5df; border-radius:6px; background:white; text-align:left; color:#193e56; }
+.group-legend-item i { width:12px; height:12px; border-radius:2px; grid-row:span 2; }
+.group-legend-item strong { font-size:13px; overflow-wrap:anywhere; }
+.group-legend-item span { font-size:11px; }
+.selection-box { fill:#1e8ebc22; stroke:#12769d; stroke-width:2; stroke-dasharray:8 5; pointer-events:none; }
+.selecting { cursor:crosshair; }
+.group-view .seat.has-group rect { fill:var(--group-color); stroke:#35566b; }
+.group-view .seat.has-group > text:not(.seat-state-marker) { fill:white; paint-order:stroke; stroke:#19384b; stroke-width:1px; }
+.seat.is-held rect { fill:url(#held-pattern) !important; stroke:#a97917 !important; }
+.seat.status-unavailable rect { fill:#7b8994 !important; }
+.seat .seat-state-marker { font-size:9px; fill:#17394f; paint-order:stroke; stroke:white; stroke-width:2px; pointer-events:none; }
+.seat.is-multi-selected rect { stroke:#c7218a !important; stroke-width:4 !important; }
+.zone-label { cursor:pointer; }
+.zone-label:focus-visible { outline:2px solid #c7218a; }
+.zone-group-name { fill:#163d58; font-size:18px; font-weight:800; text-anchor:middle; }
+.map-group-name { fill:#17394f; font-size:20px; font-weight:800; }
+.map-group-count { fill:#37566b; font-size:15px; }
+@media (max-width:820px) {
+  .group-toolbar { padding:8px 12px; }
+  .group-toolbar label { margin-left:0; }
+  .workspace:has(.group-panel:not([hidden])) { padding-right:0; padding-bottom:0; }
+  .group-panel { position:relative; width:100%; max-height:440px; border-top:1px solid #b8c9d3; }
+  .workspace:has(.group-panel:not([hidden])) { display:flex; flex-direction:column; }
+  .group-panel button { min-height:44px; }
+}
+
 @media print {
+  .group-toolbar, .group-panel, .group-confirm, .group-legend, .selection-box { display:none !important; }
+  .workspace:has(.group-panel:not([hidden])) { padding:0; }
+  .seat.is-multi-selected rect { stroke:#35566b !important; stroke-width:1.4 !important; }
   .led-menu, .link-hint { display: none !important; }
   html, body { width: 100%; height: auto; background: white; color: #102b40; }
   body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }

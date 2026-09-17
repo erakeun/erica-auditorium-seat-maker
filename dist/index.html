@@ -100,6 +100,12 @@
       </div>
     </section>
 
+    <section class="group-toolbar" aria-label="구역 지정 도구">
+      <button id="mode-move" type="button" aria-pressed="true">이동</button><button id="mode-select" type="button" aria-pressed="false">구역 선택</button>
+      <button id="show-groups" type="button" aria-pressed="false">그룹 보기</button><button id="undo-change" type="button" disabled>실행 취소</button>
+      <span id="selection-count" aria-live="polite">선택 0석</span><span id="held-summary">비워두기 0 · 배치 가능 406</span>
+      <label>출력 <select id="print-content"><option value="name">개인 배정용</option><option value="group">그룹 안내용 (이름 제외)</option></select></label>
+    </section>
     <main class="workspace">
       <section class="map-panel" aria-label="3층 좌석 배치">
         <div id="map-viewport" class="map-viewport">
@@ -118,12 +124,14 @@
           </div>
         </div>
 
+        <div id="group-legend" class="group-legend" aria-label="그룹별 좌석 현황" hidden></div>
         <div class="map-footer">
           <div class="legend" aria-label="좌석 상태 범례">
             <span><i class="legend-seat empty"></i>빈 좌석</span>
             <span><i class="legend-seat assigned"></i>배정 완료</span>
             <span><i class="legend-seat unavailable"></i>사용 불가</span>
             <span><i class="legend-seat selected"></i>선택 중</span>
+            <span>비 + 사선: 비워두기</span><span>◆ 고정 · ● 개인 배정</span>
           </div>
           <p>화면 방향 기준 · 위쪽이 무대 / 외측 약 45°는 도면 판독 기준 · 실측 도면 아님</p>
         </div>
@@ -176,7 +184,22 @@
         <p class="id-note">좌석 ID는 이 도구의 관리번호이며 현장의 공식 좌석번호가 아닙니다.</p>
       </aside>
       <button id="panel-scrim" class="panel-scrim" type="button" aria-label="편집 패널 닫기" tabindex="-1"></button>
+      <aside id="group-panel" class="group-panel" aria-label="그룹 지정 및 비워두기" hidden>
+        <h2>구역 선택 · 그룹 지정</h2>
+        <p class="help-text">좌석 중심을 포함하는 사각형으로 선택합니다. 탭은 선택/해제, Shift는 추가, Alt는 빼기. Esc는 선택 해제입니다.</p>
+        <div class="button-row"><button id="select-replace" aria-pressed="true">새 선택</button><button id="select-add" aria-pressed="false">추가</button><button id="select-subtract" aria-pressed="false">빼기</button><button id="clear-selection">전체 선택 해제</button></div>
+        <div class="group-range"><label>구역<select id="select-zone"><option value="all">전체</option><option>L1</option><option>L2</option><option>C</option><option>R2</option><option>R1</option></select></label><label>시작열<select id="select-row-start"></select></label><label>끝열<select id="select-row-end"></select></label></div>
+        <button id="select-range">구역·행 선택</button>
+        <hr><label>대상 그룹<select id="group-target"><option value="">새 그룹</option></select></label>
+        <label>그룹 이름<input id="group-name" maxlength="60" placeholder="직접 입력하세요"></label><label>색상<input id="group-color" type="color" value="#0d5c8f"></label>
+        <div class="button-row"><button id="assign-group">선택 좌석 지정 / 추가</button><button id="remove-group">선택 좌석 그룹 해제</button></div>
+        <div class="button-row"><button id="rename-group">이름·색 저장</button><button id="highlight-group">구성 좌석 선택</button><button id="delete-group">그룹 삭제</button></div>
+        <hr><div class="button-row"><button id="hold-seats">선택 좌석 비워두기</button><button id="unhold-seats">비워두기 해제</button></div>
+        <p class="help-text">비워두기는 사용 불가와 다릅니다. 그룹 해제/삭제는 개인 배정을 지우지 않습니다. 고정 배정은 개인 편집에서 먼저 해제하세요.</p>
+        <button id="group-auto">그룹 안에서 자동 배치</button>
+      </aside>
     </main>
+    <dialog id="group-confirm" class="group-confirm"><h2>변경 내용 확인</h2><div id="group-impact"></div><div class="button-row"><button id="confirm-group-change">변경 적용</button><button id="cancel-group-change">취소</button></div></dialog>
 
     <dialog id="roster-dialog" class="roster-dialog">
       <div class="dialog-shell">
@@ -211,6 +234,7 @@
 
         <section class="dialog-page" data-roster-page="auto">
           <div class="auto-topline"><div class="inline-options"><label><input type="radio" name="layout-mode" value="event" checked /> 행사용</label><label><input type="radio" name="layout-mode" value="class" /> 수업용</label></div><button id="undo-layout" class="text-button" type="button" disabled>이전 배치로 되돌리기</button></div>
+          <section class="flow-card"><h3>명단 그룹 → 좌석 그룹 연결</h3><p class="help-text">명단의 그룹 열만 사용하며 이름·국적은 추측하지 않습니다. 연결 결과를 확인하고 저장하세요. 여러 명단 그룹을 같은 좌석 그룹에 연결할 수 있습니다.</p><div id="group-link-fields" class="mapping-grid"></div><button id="save-group-links">연결 저장</button><label><input id="group-only-layout" type="checkbox"> 그룹 안에서만 배치 (연결 안 된 사람은 미배정)</label><label><input id="ignore-group-limits" type="checkbox"> 이번 배치에서 그룹 제한 명시적으로 해제 (비워두기·사용 불가는 유지)</label></section>
           <div id="event-layout-settings" class="settings-grid">
             <label>중앙 배치 방향<select id="center-direction"><option value="left">5 → 4 → 6</option><option value="right">5 → 6 → 4</option></select></label>
             <label>내빈 시작열<select id="vip-start-row"></select></label><label>내빈 마지막열<select id="vip-end-row"></select></label>
@@ -245,9 +269,11 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="seat-data.js"></script>
     <script src="seat-layout.js"></script>
+    <script src="group-engine.js"></script>
     <script src="roster-engine.js"></script>
     <script src="app.js"></script>
     <script src="stage-links.js"></script>
     <script src="roster-ui.js"></script>
+    <script src="group-ui.js"></script>
   </body>
 </html>

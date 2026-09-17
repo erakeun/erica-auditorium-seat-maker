@@ -11,7 +11,7 @@
   const titles = { import: '명단 불러오기', auto: '자동 배치', list: '명단 보기' };
   const fieldLabels = {
     event: { name: '이름', org: '소속', title: '직함', priority: '의전순위', group: '그룹', requestedSeat: '지정좌석', note: '메모' },
-    class: { name: '이름', identifier: '학번 또는 식별번호', org: '소속 또는 반', requestedSeat: '지정좌석', note: '메모' }
+    class: { name: '이름', identifier: '학번 또는 식별번호', org: '소속 또는 반', group: '그룹', requestedSeat: '지정좌석', note: '메모' }
   };
   const aliases = {
     name: ['이름', '성명', 'name'], identifier: ['학번', '식별번호', '아이디', 'id'], org: ['소속', '기관', '반', '학과'], title: ['직함', '직위'],
@@ -21,7 +21,6 @@
   let sourceMatrix = null;
   let importPreview = [];
   let layoutPreview = null;
-  let lastUndo = null;
   let idCounter = 0;
 
   function makeId() {
@@ -36,7 +35,7 @@
     document.querySelectorAll('[data-roster-page]').forEach((page) => page.classList.toggle('is-active', page.dataset.rosterPage === name));
     $('roster-dialog-title').textContent = titles[name];
     if (name === 'list') renderRosterList();
-    if (name === 'auto') syncLayoutMode();
+    if (name === 'auto') { syncLayoutMode(); renderGroupLinks(); cancelLayoutPreview(); }
   }
   function openDialog(tab) {
     showTab(tab);
@@ -129,7 +128,7 @@
     const fields = Object.keys(fieldLabels[mode]);
     const merge = document.querySelector('input[name="roster-merge"]:checked').value;
     const rosterToValidate = merge === 'append' ? [...state().participants, ...importPreview] : importPreview;
-    const result = engine.validateRoster(rosterToValidate, app.blueprint, state().assignments);
+    const result = engine.validateRoster(rosterToValidate, app.blueprint, state().assignments,state());
     const fixedIds = new Set(Object.values(state().assignments).filter((record) => record.fixed && record.participantId).map((record) => record.participantId));
     $('import-summary').textContent = `${importPreview.length}명 · 오류 ${result.errors}건 · 안내 ${result.warnings}건 · ${merge === 'replace' ? `교체 시 고정 참가자 ${fixedIds.size}명 유지` : `기존 명단 ${state().participants.length}명에 추가`}`;
     const issues = $('import-issues'); issues.replaceChildren();
@@ -153,7 +152,7 @@
   function applyImport() {
     const merge = document.querySelector('input[name="roster-merge"]:checked').value;
     const rosterToValidate = merge === 'append' ? [...state().participants, ...importPreview] : importPreview;
-    const result = engine.validateRoster(rosterToValidate, app.blueprint, state().assignments);
+    const result = engine.validateRoster(rosterToValidate, app.blueprint, state().assignments,state());
     if (result.errors) { app.showToast('기존 명단을 포함한 오류를 먼저 수정하세요.'); return; }
     if (merge === 'replace') {
       const oldIds = new Set(state().participants.map((person) => person.id));
@@ -226,13 +225,17 @@
   function swapSeats() {
     const first = $('swap-first').value; const second = $('swap-second').value;
     const map = assignmentMap(); if (!first || !second || first === second || !map.has(first) || !map.has(second)) { app.showToast('서로 다른 배정자 두 명을 선택하세요.'); return; }
-    const a = map.get(first); const b = map.get(second); state().assignments[a.seatId] = b.record; state().assignments[b.seatId] = a.record;
+    const a = map.get(first); const b = map.get(second);
+    if(a.record.fixed || b.record.fixed || !window.GROUP_ENGINE.allowed(state(),state().participants.find(p=>p.id===first),b.seatId) || !window.GROUP_ENGINE.allowed(state(),state().participants.find(p=>p.id===second),a.seatId)){app.showToast('고정·그룹 제한·비워두기 조건과 충돌하여 맞바꾸지 않았습니다.');return;}
+    state().assignments[a.seatId] = b.record; state().assignments[b.seatId] = a.record;
     app.notifyStateChanged('두 사람의 좌석을 맞바꿨습니다.'); renderRosterList();
   }
 
   function optionsFromForm(mode) {
     const zones = (id) => Array.from($(id).querySelectorAll('input:checked')).map((input) => input.value);
     return {
+      groupOnly: $('group-only-layout').checked,
+      ignoreGroups: $('ignore-group-limits').checked,
       scope: document.querySelector('input[name="layout-scope"]:checked').value,
       centerDirection: $('center-direction').value,
       vipArea: { zones: zones('vip-zones'), startRow: $('vip-start-row').value, endRow: $('vip-end-row').value },
@@ -247,7 +250,9 @@
     if (!participants.length) { app.showToast(`${mode === 'event' ? '행사용' : '수업용'} 명단이 없습니다.`); return; }
     const options = optionsFromForm(mode);
     if (options.scope === 'all' && !window.confirm('고정 좌석과 사용 불가 좌석을 제외한 기존 배정을 전체 재배치할까요?')) return;
-    layoutPreview = engine.buildPreview({ blueprint: app.blueprint, participants, assignments: state().assignments, mode, options });
+    if(options.ignoreGroups && !window.confirm('이번 배치에서 그룹 제한을 해제할까요? 다른 그룹 좌석에도 배정될 수 있습니다. 비워두기·사용 불가는 유지합니다.'))return;
+    layoutPreview = engine.buildPreview({ blueprint: app.blueprint, participants, assignments: state().assignments, groupState: state(), mode, options });
+    layoutPreview.revision = app.getRevision();
     layoutPreview.mode = mode;
     layoutPreview.options = options;
     renderLayoutPreview();
@@ -259,17 +264,23 @@
     const assignedCount = people.filter((person) => assignedIds.has(person.id)).length;
     $('layout-summary').textContent = `명단 ${people.length}명 · 배정 ${assignedCount}명 · 아직 자리가 없는 사람 ${layoutPreview.unassigned.length}명 · 충돌 ${layoutPreview.conflicts.length}건`;
     const conflicts = $('layout-conflicts'); conflicts.replaceChildren();
+    state().groups.forEach(group=>{
+      const linked=people.filter(p=>window.GROUP_ENGINE.targetFor(state(),p)===group.id);
+      const stat=window.GROUP_ENGINE.stats({...state(),assignments:layoutPreview.assignments},app.blueprint,group.id);
+      const p=document.createElement('p');p.textContent=`${group.name}: 연결 ${linked.length}명 · 배정 ${stat.assigned}명 · 추가 가능 ${stat.available}석 · 미배정 ${linked.filter(p=>!assignedIds.has(p.id)).length}명`;conflicts.append(p);
+    });
     [...layoutPreview.conflicts.map((item) => item.message), ...(layoutPreview.unassigned.length ? [`미배정: ${layoutPreview.unassigned.map((person) => person.name).join(', ')}`] : [])].forEach((message) => { const p = document.createElement('p'); p.className = 'issue error'; p.textContent = message; conflicts.append(p); });
     const byPerson = new Map(layoutPreview.mappings.map((item) => [item.participantId, item.seatId]));
     const body = $('layout-table-body'); body.replaceChildren();
     people.forEach((person) => { const row = document.createElement('tr'); [person.name, byPerson.get(person.id) || '미배정', assignedIds.has(person.id) ? '배정 예정' : '확인 필요'].forEach((value) => { const td = document.createElement('td'); td.textContent = value; row.append(td); }); body.append(row); });
-    $('apply-layout').disabled = layoutPreview.unassigned.length > 0 && !allowPartial;
+    $('apply-layout').disabled = (layoutPreview.unassigned.length > 0 && !allowPartial) || layoutPreview.conflicts.some(c=>c.blocking);
     $('cancel-layout-preview').disabled = false; $('layout-preview').hidden = false;
   }
   function applyLayout() {
     if (!layoutPreview) return;
+    if(layoutPreview.revision!==app.getRevision()){app.showToast('그룹 또는 배정 내용이 바뀌었습니다. 미리보기를 다시 만드세요.');cancelLayoutPreview();return;}
+    if(layoutPreview.conflicts.some(c=>c.blocking)){app.showToast('보존/고정 배정 충돌을 먼저 해결하세요.');return;}
     if (layoutPreview.unassigned.length && !$('allow-partial').checked) { app.showToast('미배정 인원을 확인하거나 부분 배치를 선택하세요.'); return; }
-    lastUndo = JSON.parse(JSON.stringify(state().assignments));
     state().layoutSettings = { mode: layoutPreview.mode, ...layoutPreview.options };
     const targetIds = new Set(state().participants.filter((person) => person.mode === layoutPreview.mode).map((person) => person.id));
     const appliedCount = layoutPreview.mappings.filter((item) => targetIds.has(item.participantId)).length;
@@ -277,18 +288,22 @@
     $('undo-layout').disabled = false; cancelLayoutPreview(); renderRosterList();
   }
   function cancelLayoutPreview() { layoutPreview = null; $('layout-preview').hidden = true; $('cancel-layout-preview').disabled = true; }
-  function undoLayout() { if (!lastUndo) return; app.replaceAssignments(lastUndo, '이전 배치로 되돌렸습니다.'); lastUndo = null; $('undo-layout').disabled = true; renderRosterList(); }
+  function undoLayout() { app.undo(); cancelLayoutPreview(); renderRosterList(); $('undo-layout').disabled = !app.canUndo(); }
   function syncLayoutMode() { const mode = document.querySelector('input[name="layout-mode"]:checked').value; $('event-layout-settings').hidden = mode !== 'event'; $('class-layout-settings').hidden = mode !== 'class'; }
 
   function exportRows(order) {
     const assigned = assignmentMap();
     const rows = state().participants.map((person) => ({
-      이름: person.name, '소속·직함 또는 반': [person.org, person.title].filter(Boolean).join(' · '), 식별번호: person.identifier, 배정좌석: assigned.get(person.id)?.seatId || '', 고정여부: assigned.get(person.id)?.record.fixed ? '고정' : '', 배정상태: assigned.has(person.id) ? '배정 완료' : '미배정', 메모: person.note
+      이름: person.name, '소속·직함 또는 반': [person.org, person.title].filter(Boolean).join(' · '), 식별번호: person.identifier, 배정좌석: assigned.get(person.id)?.seatId || '', 고정여부: assigned.get(person.id)?.record.fixed ? '고정' : '', 배정상태: assigned.has(person.id) ? '배정 완료' : '미배정', 메모: person.note, 명단그룹:person.group, 좌석그룹:state().groups.find(g=>g.id===state().seatGroups[assigned.get(person.id)?.seatId])?.name||'', 비워두기:''
     }));
+    if(order==='seat'){
+      const represented=new Set(rows.map(r=>r.배정좌석));
+      app.blueprint.seats.forEach(seat=>{if(!represented.has(seat.id)){const r=app.getRecord(seat.id);rows.push({이름:r.name||'','소속·직함 또는 반':r.org||'',식별번호:'',배정좌석:seat.id,고정여부:r.fixed?'고정':'',배정상태:r.status==='unavailable'?'사용 불가':state().heldSeats[seat.id]?'비워두기':r.status==='assigned'?'배정 완료':'빈 좌석',메모:r.note||'',명단그룹:'',좌석그룹:state().groups.find(g=>g.id===state().seatGroups[seat.id])?.name||'',비워두기:state().heldSeats[seat.id]?'비워두기':''});}});
+    }
     return rows.sort(order === 'seat' ? (a, b) => (a.배정좌석 || 'ZZZ').localeCompare(b.배정좌석 || 'ZZZ') : (a, b) => a.이름.localeCompare(b.이름, 'ko'));
   }
   function exportResult(order, format) {
-    const headers = ['이름', '소속·직함 또는 반', '식별번호', '배정좌석', '고정여부', '배정상태', '메모']; const rows = exportRows(order); const base = order === 'seat' ? '좌석순-배정명단' : '이름순-배정명단';
+    const headers = ['이름', '소속·직함 또는 반', '식별번호', '배정좌석', '고정여부', '배정상태', '명단그룹', '좌석그룹', '비워두기', '메모']; const rows = exportRows(order); const base = order === 'seat' ? '좌석순-배정명단' : '이름순-배정명단';
     if (format === 'xlsx') workbookDownload(rows, headers, `${base}.xlsx`); else csvDownload(rows, headers, `${base}.csv`);
   }
 
@@ -310,5 +325,14 @@
     $('export-name-xlsx').addEventListener('click', () => exportResult('name', 'xlsx')); $('export-seat-xlsx').addEventListener('click', () => exportResult('seat', 'xlsx')); $('export-name-csv').addEventListener('click', () => exportResult('name', 'csv')); $('export-seat-csv').addEventListener('click', () => exportResult('seat', 'csv'));
   }
 
+  function renderGroupLinks(){
+    const box=$('group-link-fields');box.replaceChildren();
+    const sources=[...new Set(state().participants.map(p=>p.group||''))];
+    sources.forEach(source=>{const label=document.createElement('label');label.textContent=source||'(명단 그룹 없음)';const select=document.createElement('select');select.dataset.source=source;select.add(new Option('연결 안 함',''));state().groups.forEach(g=>select.add(new Option(g.name,g.id)));select.value=state().groupLinks.find(l=>l.source===source)?.target||'';label.append(select);box.append(label);});
+    if(!sources.length)box.textContent='명단이 없습니다. 그룹 안내도만 만들 때는 명단이 필요하지 않습니다.';
+  }
+  $('save-group-links').onclick=()=>{state().groupLinks=Array.from($('group-link-fields').querySelectorAll('select')).filter(s=>s.value).map(s=>({source:s.dataset.source,target:s.value}));app.notifyStateChanged('명단 그룹 연결을 저장했습니다. 기존 배정은 이동하지 않습니다.');cancelLayoutPreview();};
+  document.querySelectorAll('#group-only-layout, #ignore-group-limits, #event-layout-settings input, #event-layout-settings select, #class-layout-settings input, #class-layout-settings select, input[name="layout-scope"], input[name="layout-mode"]').forEach(input=>input.addEventListener('change',cancelLayoutPreview));
+  window.addEventListener('seating-change',()=>{$('undo-layout').disabled=!app.canUndo();});
   populateControls(); bind();
 })();
