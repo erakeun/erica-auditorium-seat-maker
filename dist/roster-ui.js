@@ -123,14 +123,21 @@
     });
     renderImportPreview();
   }
+  function rosterForImport(merge) {
+    if (merge === 'append') return [...state().participants, ...importPreview];
+    const fixedIds = new Set(Object.values(state().assignments).filter((record) => record.fixed && record.participantId).map((record) => record.participantId));
+    const fixedPeople = state().participants.filter((person) => fixedIds.has(person.id));
+    return [...fixedPeople, ...importPreview].filter((person, index, all) => all.findIndex((item) => item.id === person.id) === index);
+  }
   function renderImportPreview() {
     const mode = currentRosterMode();
     const fields = Object.keys(fieldLabels[mode]);
     const merge = document.querySelector('input[name="roster-merge"]:checked').value;
-    const rosterToValidate = merge === 'append' ? [...state().participants, ...importPreview] : importPreview;
+    const rosterToValidate = rosterForImport(merge);
     const result = engine.validateRoster(rosterToValidate, app.blueprint, state().assignments,state());
     const fixedIds = new Set(Object.values(state().assignments).filter((record) => record.fixed && record.participantId).map((record) => record.participantId));
     $('import-summary').textContent = `${importPreview.length}명 · 오류 ${result.errors}건 · 안내 ${result.warnings}건 · ${merge === 'replace' ? `교체 시 고정 참가자 ${fixedIds.size}명 유지` : `기존 명단 ${state().participants.length}명에 추가`}`;
+    if (merge === 'replace' && fixedIds.size) $('import-summary').textContent += ' · 검증 행 번호는 고정 참가자를 앞에 둔 통합 명단 기준';
     const issues = $('import-issues'); issues.replaceChildren();
     result.issues.forEach((issue) => { const item = document.createElement('p'); item.className = `issue ${issue.level}`; item.textContent = issue.index >= 0 ? `${issue.index + 1}행: ${issue.message}` : issue.message; issues.append(item); });
     const head = $('import-table-head'); head.replaceChildren(); const tr = document.createElement('tr');
@@ -151,14 +158,12 @@
   }
   function applyImport() {
     const merge = document.querySelector('input[name="roster-merge"]:checked').value;
-    const rosterToValidate = merge === 'append' ? [...state().participants, ...importPreview] : importPreview;
+    const rosterToValidate = rosterForImport(merge);
     const result = engine.validateRoster(rosterToValidate, app.blueprint, state().assignments,state());
     if (result.errors) { app.showToast('기존 명단을 포함한 오류를 먼저 수정하세요.'); return; }
     if (merge === 'replace') {
       const oldIds = new Set(state().participants.map((person) => person.id));
-      const fixedIds = new Set(Object.values(state().assignments).filter((record) => record.fixed && record.participantId).map((record) => record.participantId));
-      const fixedPeople = state().participants.filter((person) => fixedIds.has(person.id));
-      state().participants = [...fixedPeople, ...importPreview].filter((person, index, all) => all.findIndex((item) => item.id === person.id) === index);
+      state().participants = rosterToValidate;
       Object.keys(state().assignments).forEach((seatId) => {
         const record = state().assignments[seatId];
         if (record.participantId && oldIds.has(record.participantId) && !record.fixed) delete state().assignments[seatId];
